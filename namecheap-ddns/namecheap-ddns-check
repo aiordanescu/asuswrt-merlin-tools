@@ -1,0 +1,79 @@
+#!/bin/sh
+# Repair Merlin's Namecheap verification and forced-refresh cache handling.
+# Use the built-in updater; never read or store the DDNS password here.
+TAG=namecheap-ddns
+[ "$(nvram get ddns_enable_x)" = 1 ] || exit 0
+[ "$(nvram get ddns_server_x)" = WWW.NAMECHEAP.COM ] || exit 0
+
+STATE=/tmp/namecheap-ddns
+mkdir -p "$STATE" || exit 1
+mkdir "$STATE/lock" 2>/dev/null || exit 0
+trap 'rmdir "$STATE/lock"' EXIT
+trap 'exit 1' HUP INT TERM
+
+# Honour the configured verification interval; cron checks every five minutes.
+NOW=$(date +%s)
+PERIOD=$(nvram get ddns_regular_period)
+case "$PERIOD" in ''|*[!0-9]*) PERIOD=30 ;; esac
+[ "$PERIOD" -ge 30 ] || PERIOD=30
+LAST=0
+[ ! -f "$STATE/last-check" ] || read -r LAST < "$STATE/last-check"
+case "$LAST" in ''|*[!0-9]*) LAST=0 ;; esac
+if [ "$1" != --check-now ] && [ "$NOW" -ge "$LAST" ] && [ $((NOW - LAST)) -lt $((PERIOD * 60)) ]; then
+    exit 0
+fi
+printf '%s\n' "$NOW" > "$STATE/last-check"
+pidof inadyn >/dev/null 2>&1 && exit 0
+
+UNIT=$(nvram get ddns_wan_unit)
+if [ "$(nvram get wans_mode)" != lb ] || { [ "$UNIT" != 0 ] && [ "$UNIT" != 1 ]; }; then
+    UNIT=0
+    [ "$(nvram get wan0_primary)" = 1 ] || UNIT=1
+fi
+[ "$(nvram get wan${UNIT}_state_t)" = 2 ] || exit 0
+EXPECTED=$(nvram get wan${UNIT}_ipaddr)
+# This workaround targets a WAN with a directly assigned public IPv4.
+printf '%s\n' "$EXPECTED" | awk -F. '
+    NF != 4 { exit 1 }
+    { for (i=1; i<=4; i++) if ($i !~ /^[0-9]+$/ || $i > 255) exit 1 }
+    $1 == 0 || $1 == 10 || $1 == 127 || $1 >= 224 { exit 1 }
+    $1 == 100 && $2 >= 64 && $2 <= 127 { exit 1 }
+    $1 == 169 && $2 == 254 { exit 1 }
+    $1 == 172 && $2 >= 16 && $2 <= 31 { exit 1 }
+    $1 == 192 && $2 == 168 { exit 1 }
+' || exit 0
+
+HOST=$(nvram get ddns_hostname_x)
+DOMAIN=$(nvram get ddns_username_x)
+case "$HOST" in ''|*[!a-zA-Z0-9_.-]*) exit 1 ;; esac
+case "$DOMAIN" in ''|*[!a-zA-Z0-9.-]*) exit 1 ;; esac
+FQDN=$HOST.$DOMAIN
+REASON=
+if [ "$(nvram get ddns_regular_check)" = 1 ]; then
+    ANSWER=
+    for RESOLVER in 1.1.1.1 8.8.8.8; do
+        ANSWER=$(nslookup "$FQDN" "$RESOLVER" 2>/dev/null | awk '
+            /^Name:/ { answer=1; next }
+            answer && /^Address [0-9]+:/ && $3 ~ /^[0-9]+\.[0-9]+\.[0-9]+\.[0-9]+$/ { print $3; exit }
+        ')
+        [ -z "$ANSWER" ] || break
+    done
+    if [ -n "$ANSWER" ] && [ "$ANSWER" != "$EXPECTED" ]; then
+        REASON="$FQDN resolves to $ANSWER; WAN$UNIT is $EXPECTED"
+    fi
+fi
+
+DAYS=$(nvram get ddns_refresh_x)
+CACHE=$(nvram get ddns_cache)
+UPDATED=${CACHE%%,*}
+case "$DAYS:$UPDATED" in *[!0-9:]*|:*|*:) ;; *)
+    if [ "$DAYS" -gt 0 ] && [ "$NOW" -ge "$UPDATED" ] && [ $((NOW - UPDATED)) -ge $((DAYS * 86400)) ]; then
+        [ -n "$REASON" ] || REASON="scheduled refresh after $DAYS day(s)"
+    fi
+    ;;
+esac
+[ -n "$REASON" ] || exit 0
+logger -t "$TAG" "$REASON; requesting update with explicit WAN IP"
+# Merlin checks for this file before generating config or invoking postconf.
+rm -f /var/cache/inadyn/*.cache
+service restart_ddns

@@ -1,0 +1,4 @@
+#!/bin/sh
+# Logging only; preserve unrelated actions in an existing wan-event hook.
+logger -t wan-event "Observed event WAN$1 $2"
+exit 0

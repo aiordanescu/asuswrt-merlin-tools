@@ -1,0 +1,3 @@
+#!/bin/sh
+# Merge this command into services-start before any unconditional exit.
+/jffs/scripts/wan-watchdog >/tmp/wan-watchdog.log 2>&1 </dev/null &

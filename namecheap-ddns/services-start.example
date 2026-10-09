@@ -1,0 +1,3 @@
+#!/bin/sh
+# Merge this command into services-start before any unconditional exit.
+cru a NamecheapDDNS '*/5 * * * * /jffs/scripts/namecheap-ddns-check'

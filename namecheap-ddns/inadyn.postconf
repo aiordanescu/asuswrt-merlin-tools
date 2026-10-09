@@ -1,0 +1,7 @@
+#!/bin/sh
+# Merlin generates credentials; this hook only fixes Namecheap's URL template.
+CONFIG=$1
+[ "$(nvram get ddns_server_x)" = "WWW.NAMECHEAP.COM" ] || exit 0
+[ -f "$CONFIG" ] || exit 1
+grep -q '^custom namecheap {' "$CONFIG" || exit 0
+sed -i '/^[[:space:]]*ddns-path[[:space:]]*=/s/&host=%h"/\&host=%h\&ip=%i"/' "$CONFIG"
