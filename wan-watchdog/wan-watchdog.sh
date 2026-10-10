@@ -34,6 +34,15 @@ PROBE_FALLBACKS=${PROBE_FALLBACKS:-"8.8.4.4 9.9.9.11 1.1.1.2 208.67.222.222"}
 LAN_NETWORKS=${LAN_NETWORKS:-auto}
 # auto reads active resolver configuration; otherwise supply resolver IPv4s.
 DNS_SERVERS=${DNS_SERVERS:-auto}
+# Optional installed helper coordinates native DDNS only when the UI says Auto.
+DDNS_HELPER=${DDNS_HELPER:-/jffs/scripts/wan-watchdog-ddns}
+DDNS_HELPER_LOADED=0
+if [ -r "$DDNS_HELPER" ]; then
+  WAN_WATCHDOG_DDNS_LIBRARY_ONLY=1
+  . "$DDNS_HELPER"
+  unset WAN_WATCHDOG_DDNS_LIBRARY_ONLY
+  DDNS_HELPER_LOADED=1
+fi
 
 log() { logger -t wan-watchdog "$*"; }
 now_seconds() { awk '{print int($1)}' /proc/uptime; }
@@ -178,6 +187,12 @@ cleanup_owned() {
   done < "$OWNED_TABLES"
   : > "$OWNED_TABLES"
   rm -f "$OWNERSHIP_DIR/whole-failover" "$STATE_DIR/overlay-signature"
+  if [ -f "$OWNERSHIP_DIR/ddns-auto-unit" ]; then
+    rm -f "$OWNERSHIP_DIR/ddns-auto-unit" "$STATE_DIR/ddns-recovery"
+    if [ -x "$DDNS_HELPER" ]; then
+      ( exec 9>&-; "$DDNS_HELPER" --update native ) >/dev/null 2>&1 &
+    fi
+  fi
 }
 setup_wan_table() {
   setup_unit=$1; setup_table=$2
@@ -214,7 +229,9 @@ prepare_probe_routes() {
   done
   cp "$OWNED_RULES" "$STATE_DIR/old-probes"
   while IFS= read -r pr_record; do
-    case "$pr_record" in *" lookup $PROBE_TABLE0"|*" lookup $PROBE_TABLE1")
+    case "$pr_record" in
+      "$PROBE_PRIORITY from all to "*" iif lo lookup $PROBE_TABLE0"|"$PROBE_PRIORITY from all to "*" iif lo lookup $PROBE_TABLE1") continue ;;
+      *" lookup $PROBE_TABLE0"|*" lookup $PROBE_TABLE1")
       grep -qxF -e "$pr_record" "$STATE_DIR/wanted-probes" || owned_rule_remove "$pr_record" || return 1 ;;
     esac
   done < "$STATE_DIR/old-probes"
@@ -563,6 +580,7 @@ write_status() {
   {
     echo "uptime_seconds=$NOW mode=$FAILOVER_MODE targets=$TARGET_A,$TARGET_B"
     echo "rule_priority=$FAILOVER_PRIORITY ownership=$OWNERSHIP_DIR whole_failed=$(read_number "$OWNERSHIP_DIR/whole-failover" none)"
+    if [ "$DDNS_HELPER_LOADED" = 1 ]; then ddns_status; fi
     for status_unit in 0 1; do
       echo "WAN$status_unit $(health_summary "$status_unit") failed_over=$([ -f "$STATE_DIR/active_wan$status_unit" ] && echo yes || echo no) recovery_since=$(read_number "$STATE_DIR/recovery_wan$status_unit" none)"
     done
@@ -596,7 +614,7 @@ watchdog_main() {
   trap 'exit 0' TERM INT
   # Keep active failover markers during a watchdog restart; discard measurements.
   rm -f "$STATE_DIR"/samples_* "$STATE_DIR"/recovery_wan* "$STATE_DIR"/down_wan* \
-    "$STATE_DIR"/decision_wan* "$STATE_DIR"/config_wan*
+    "$STATE_DIR"/decision_wan* "$STATE_DIR"/config_wan* "$STATE_DIR"/ddns-recovery
   previous_mode=$(cat "$OWNERSHIP_DIR/mode" 2>/dev/null)
   if [ "$previous_mode" != "$FAILOVER_MODE" ] && [ -n "$previous_mode" ]; then
     remove_overlay || return 1
@@ -623,7 +641,7 @@ watchdog_main() {
       echo 1 > "$STATE_DIR/migrate-pins"
     fi
   fi
-  log "Loss-aware watchdog v3 started; mode=$FAILOVER_MODE priority=$FAILOVER_PRIORITY; window=${WINDOW_SECONDS}s fail=${DEGRADED_LOSS}% backup<=${BACKUP_LOSS}% recovery<=${RECOVERY_LOSS}%/${RECOVERY_SECONDS}s"
+  log "Loss-aware watchdog v3.1 started; mode=$FAILOVER_MODE priority=$FAILOVER_PRIORITY; window=${WINDOW_SECONDS}s fail=${DEGRADED_LOSS}% backup<=${BACKUP_LOSS}% recovery<=${RECOVERY_LOSS}%/${RECOVERY_SECONDS}s"
   while :; do
     cycle_start=$(now_seconds)
     if ! namespace_safe; then
@@ -657,6 +675,7 @@ watchdog_main() {
         *) if [ ! -f "$STATE_DIR/active_wan0" ] && [ ! -f "$STATE_DIR/active_wan1" ]; then remove_overlay || log "DNS override cleanup failed"; fi ;;
       esac
     fi
+    if [ "$DDNS_HELPER_LOADED" = 1 ]; then ddns_tick; fi
     write_status
     cycle_elapsed=$(( $(now_seconds) - cycle_start ))
     cycle_sleep=$((CHECK_INTERVAL - cycle_elapsed))

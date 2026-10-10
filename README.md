@@ -5,7 +5,7 @@ Asuswrt-Merlin 3004.388.12_2**.
 
 | Project | What it fixes |
 | --- | --- |
-| [WAN watchdog](wan-watchdog/) | Moves ordinary LAN traffic and router DNS off a failed or severely degraded WAN; removes temporary overrides after sustained recovery. Pinned-only mode is configurable. |
+| [WAN watchdog](wan-watchdog/) | Moves ordinary LAN traffic and router DNS off a failed or severely degraded WAN; removes temporary overrides after sustained recovery. Pinned-only mode is configurable. The DDNS helper makes UI Auto follow WAN health; fixed DDNS interface choices stay fixed. |
 | [Namecheap DDNS](namecheap-ddns/) | Adds the selected WAN IP to updates and repairs full-hostname verification and stale-cache refresh behavior. |
 
 Each folder contains the scripts and its installation, upgrade, monitoring,
@@ -19,14 +19,17 @@ and provides a configurable pinned-only mode. The DDNS workaround targets a
 firmware releases, IPv6 configurations, and boot/firmware-upgrade behavior have
 not been validated.
 
-Run the watchdog's 36 simulated state tests without accessing a router:
+Run the watchdog's 65 simulated state tests without accessing a router:
 
 ```sh
-python3 wan-watchdog/tests/test_wan_watchdog.py
+python3 -m unittest discover -s wan-watchdog/tests
 ```
 
 The scripts read configuration from the router at runtime. No DDNS credentials
-are required in the repository. See the project READMEs for the observed bugs,
+are required in the repository. **Check WAN → DDNS → Interface**: Auto (the
+firmware default) permits DDNS movement with the watchdog helper installed;
+Primary/Secondary keep the hostname fixed. See its README for public IPv4 and
+provider support before enabling Auto. See the project READMEs for the observed bugs,
 exact thresholds, tested behavior, and limitations.
 
 Licensed under [MIT](LICENSE).

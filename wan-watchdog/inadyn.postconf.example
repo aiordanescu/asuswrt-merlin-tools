@@ -1,0 +1,7 @@
+#!/bin/sh
+# Merge this block into your existing hook before any unconditional exit.
+# Keep existing provider-specific adjustments, including the Namecheap fix.
+# wan-watchdog DDNS Auto integration
+if [ -x /jffs/scripts/wan-watchdog-ddns ]; then
+    /jffs/scripts/wan-watchdog-ddns --postconf "$1"
+fi
