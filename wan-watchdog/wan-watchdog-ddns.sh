@@ -169,7 +169,7 @@ ddns_tick() {
         rm -f "$STATE_DIR/ddns-native-pending"
       else ddns_request native; fi
     fi
-    ddns_report 'native selection (disabled, unsupported configuration, or missing postconf hook)' 
+    ddns_report 'native selection (disabled, unsupported configuration, or missing postconf hook)'
     return
   fi
   case "$(nvram get ddns_wan_unit)" in
