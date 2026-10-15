@@ -1,5 +1,12 @@
 # Loss-aware Dual-WAN watchdog
 
+The native implementation uses a persistent C monitor and shared health
+socket, with a bounded shell routing/DDNS worker. The original shell monitor
+remains available as a reference and rollback option. See [NATIVE.md](NATIVE.md) for build, guarded installation,
+operation and rollback, and [the public protocol](../common/wan-health/PROTOCOL.md)
+for independent subscribers. Measured results and remaining gates are in
+[QUALIFICATION-2026-10-15.md](QUALIFICATION-2026-10-15.md).
+
 In Asuswrt-Merlin Dual WAN **load-balance mode**, a WAN can remain connected
 while dropping enough traffic to be unusable. This watchdog redirects ordinary
 IPv4 internet traffic from the active LAN bridges to the healthy WAN, then
@@ -22,6 +29,18 @@ priority-100 pins; an upgrade from the older pinned-rule version can restore
 those preferences after the whole-LAN override is in place. Connections can
 reconnect when their outgoing WAN changes. IPv6 and custom VPN/routing layouts
 outside the recognized policies require separate validation.
+
+## Choose an implementation
+
+| Implementation | Installation and operation |
+| --- | --- |
+| Native C monitor + shell actuator | [NATIVE.md](NATIVE.md): build a static aarch64 bundle, qualify shadow mode, then use the guarded shell-to-native installer. Current target: RT-AX88U / Merlin 3004.388.12_2. |
+| Original shell monitor | [Shell installation and upgrade](#shell-installation-and-upgrade), below. Also establishes the reference/helper/hooks before a first native installation. |
+
+The native monitor works without subscribers. Its read-only Unix socket
+publishes complete, versioned health snapshots for multiple independent local
+consumers. No affinity component is required or included in this update.
+The watchdog retains routing failover, restoration and DDNS responsibilities.
 
 ## Policy
 
@@ -55,11 +74,13 @@ becomes clean, allow roughly **30 seconds to clear the loss history, then two
 clean minutes** before restoration. Restarting the daemon also resets that
 verification period but preserves active failover markers.
 
-Constants are near the top of [wan-watchdog.sh](wan-watchdog.sh).
+The shell constants are near the top of [wan-watchdog.sh](wan-watchdog.sh).
+The native thresholds are compiled into [ww_core.c](src/ww_core.c) and match
+that reference; editing shell constants does not reconfigure the C classifier.
 
 ## Configuration and rule ownership
 
-Settings are near the top of [wan-watchdog.sh](wan-watchdog.sh). The mode and
+Shell settings are near the top of [wan-watchdog.sh](wan-watchdog.sh). The mode and
 routing settings also accept environment overrides in `services-start`:
 
 ```sh
@@ -131,13 +152,14 @@ non-resolver candidates, it refuses to start. Changing effective targets resets
 the measurement/recovery windows. Confirm that the selected targets answer
 ICMP on both WANs in your network.
 
-Before pinging, `ip route get` must report the expected interface. Invalid
+Before probing, `ip route get` must report the expected interface. Invalid
 routing yields an unknown sample; missing IPv4 leases yield losses. DNS- or
 HTTPS-only failures are not independent WAN failure triggers. An exclusive
-`flock` prevents duplicate daemons, `/proc/uptime` avoids clock jumps, and
-status is replaced atomically each cycle.
+`flock` prevents duplicate daemons. The shell uses `/proc/uptime`; the native
+monitor uses monotonic timers and cross-checks suspend gaps. Status is replaced
+atomically; the socket is the native live-health interface.
 
-## Install or upgrade
+## Shell installation and upgrade
 
 Enable **Administration → System → Enable JFFS custom scripts and configs**.
 Configure Dual WAN load balancing in the GUI; source-IP pins are optional in whole-LAN mode.
@@ -233,6 +255,11 @@ is required for installation.
 
 ## Monitoring
 
+The commands below work for either implementation. Native lifecycle controls
+and JSON health inspection are in [NATIVE.md](NATIVE.md). Native worker errors,
+eligibility, sequence and desired/applied routing generations appear in status;
+DDNS diagnostics remain in `/tmp/wan-watchdog/ddns-status`.
+
 ```sh
 cat /tmp/wan-watchdog/status
 cat /tmp/wan-watchdog.log
@@ -246,6 +273,17 @@ loss as unavailable. Runtime files live under `/tmp/wan-watchdog`; they disappea
 on reboot. Decision logs are in `/tmp/syslog.log` and are also volatile.
 
 ## Rollback or removal
+
+For a native-to-shell rollback, use the saved reference and shared ledger:
+
+```sh
+sh /jffs/wan-watchdog-native/rollback.sh --rollback
+```
+
+That preserves forwarding state and restores the original entry point.
+See [native operations](NATIVE.md#install-and-operate) before deleting an
+inactive native bundle. The older-version rollback/removal procedure below
+applies to the retained shell installation.
 
 Verify and stop the PID as above. Before restoring a pre-v3 script or removing
 this installation, remove the v3-owned rules with the **currently installed v3
@@ -293,7 +331,8 @@ provider-route ownership, and probe/cleanup coexistence:
 python3 -m unittest discover -s wan-watchdog/tests
 ```
 
-Run the same mock-based tests on a router shell against the installed source:
+Run the same mock-based tests on a router shell against the installed **shell
+reference** (not the native startup wrapper):
 
 ```sh
 WAN_WATCHDOG_TEST_ROUTER=router \
@@ -302,10 +341,16 @@ WAN_WATCHDOG_TEST_DDNS_HELPER=/jffs/scripts/wan-watchdog-ddns \
 python3 -m unittest discover -s wan-watchdog/tests
 ```
 
-Router tests use temporary directories and mock routing/probes; they do not
+When the native service is installed, set `WAN_WATCHDOG_TEST_SCRIPT` to
+`/jffs/wan-watchdog-native/wan-watchdog-legacy.sh` instead. Native C and
+socket tests/build commands are in [NATIVE.md](NATIVE.md); see
+[the qualification report](QUALIFICATION-2026-10-15.md) for the complete evidence.
+
+These shell tests use temporary directories and mock routing/probes; they do not
 change live WANs or client rules. Python 3.8+ runs the harness on the host;
-Python is not needed on the router. The daemon needs Merlin's `nvram`, `ip`,
-BusyBox `ping`, `awk`, `flock`, and `logger`. DDNS also needs native Inadyn,
+Python is not needed on the router. The shell monitor needs Merlin's `nvram`, `ip`, BusyBox `ping`, `awk`,
+`flock`, and `logger`. Native monitoring sends ICMP directly; its routing worker
+still uses the firmware's shell utilities. DDNS also needs native Inadyn,
 `service`, `sleep`, and `nslookup`; lookups are bounded without a `timeout` utility.
 
 The same 65 tests passed on the router's BusyBox shell. A real primary outage

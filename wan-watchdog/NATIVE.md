@@ -1,0 +1,134 @@
+# Native watchdog
+
+The C monitor owns concurrent source-bound ICMP, deadlines, in-memory loss
+windows, health/recovery classification, routing intent and publication. Its
+event loop also handles routing notifications and independent subscribers.
+It preserves the shell thresholds and whole-LAN/pinned responsibilities.
+
+The shell stays as the routing/DDNS reference and rollback path.
+`lib/ww-adapter.sh` sources it in a bounded worker receiving explicit numeric
+intent. It preserves exact ownership, VPN guards, local-route exceptions and
+DDNS policy. Five-second deadlines, process groups and parent-death handling
+bound worker failures. Before mutation, the worker verifies that the lease,
+interface, gateway and probe targets still match its decision. Monitoring and
+publication continue while commands run. Network transmission errors on a
+validated source/route count as lost attempts; local resource, permission and
+address errors remain UNKNOWN.
+
+The public [socket protocol](../common/wan-health/PROTOCOL.md) allows future
+consumers without watchdog policy changes. Samples stay in memory. Status and
+exclusion checkpoints stay in RAM under `/tmp`; flash writes retain the
+existing ownership/transition purpose.
+
+## Build and qualification
+
+From the repository root, change into `wan-watchdog` before running the
+commands below. Host tests need C11 and Python 3. Use a static aarch64 Linux
+musl toolchain for the router, for example:
+
+```sh
+make host-tests
+python3 -m unittest discover -s tests -p 'test_*.py'
+make router bundle ROUTER_CC='zig cc -target aarch64-linux-musl'
+```
+
+The bundle is `build/wan-watchdog-native-aarch64.tar.gz`. It contains the daemon,
+`wan-healthctl`, wrapper, actuator, frozen reference, installer and rollback;
+test fixtures are excluded. The archive includes the MIT license and a short
+installation README. `--system-info` reports clock ticks for CPU
+measurement. Shadow is the default and requires a private runtime directory;
+active routing requires `--active`.
+
+Router drivers use SSH alias `router` and a private multiplexed connection:
+
+- `run_shadow.py`: read-only comparison with the live shell.
+- `run_orchestrator.py`: real loopback ICMP, a file-only actuator, real recovery
+  timing, failed restoration, monitor stall and hung-worker behavior.
+- `run_actuator.py`: real owned rules in private tables with a loopback-only
+  source, followed by exact cleanup verification.
+
+The watchdog build/tests do not require an affinity source tree. Consumer
+integration tests and drivers belong to their respective components; their
+previous development results are recorded separately in the
+[qualification report](QUALIFICATION-2026-10-15.md).
+
+On the tested router, `build/test_socket` exercises the public server/client
+with multiple readers, a slow reader, publisher restart and invalid/stale
+frames. `build/test_probe` exercises raw ICMP on loopback. These executables
+need Linux; the raw-probe test needs root/CAP_NET_RAW. They do not modify
+production routing. Do not mistake the route-actuator driver for a read-only
+test: it explicitly leases a private namespace and verifies cleanup.
+
+## Install and operate
+
+For a first installation, follow the [shell setup](README.md#shell-installation-and-upgrade)
+first to establish the reference, DDNS helper and existing hooks. The native
+bundle upgrades that running reference; it is not a fresh-install bypass.
+Qualify shadow mode on the target firmware and preserve source/runtime backups.
+The installer uses the standard `/jffs` and `/tmp/wan-watchdog` paths. It was
+qualified with the default routing namespace. Custom paths, namespaces or
+modified shell references need a reviewed manual migration; copy all required
+environment overrides into any handoff and startup commands. The installer
+requires two healthy WANs and an installed shell script identical to the frozen
+reference. Review differing customizations first.
+Existing environment settings in `services-start` remain effective.
+
+Upload the built archive from the repository root (an SSH alias `router` is
+used here):
+
+```sh
+scp -O wan-watchdog/build/wan-watchdog-native-aarch64.tar.gz router:/tmp/
+```
+
+On the router, extract into a new private staging directory. Keep an existing
+staging directory for inspection rather than overwriting it:
+
+```sh
+umask 077
+mkdir /tmp/wan-watchdog-native-stage
+tar -xzf /tmp/wan-watchdog-native-aarch64.tar.gz -C /tmp/wan-watchdog-native-stage
+cd /tmp/wan-watchdog-native-stage
+```
+
+Then install:
+
+```sh
+sh install-native.sh --install
+/jffs/scripts/wan-watchdog status
+/jffs/wan-watchdog-native/wan-healthctl
+/jffs/wan-watchdog-native/wan-healthctl --count 0 --timeout 0
+```
+
+The installer saves the old entry point, arms an independent two-minute
+rollback guard, stops the identified shell owner and atomically replaces its
+entry point with the compatible wrapper. The native process takes the shared
+exclusive lock and preserves the routing ledger and failover markers. Fresh
+eligible health on both WANs disarms the guard. Installation edits neither
+NVRAM nor existing hooks, and does not install or enable affinity.
+
+The monitor is single-instance and takes the same ownership lock as the
+shell. Raw ICMP requires root; it opens no network listening port. The Unix
+socket is local and root-only by default.
+
+No arguments means foreground execution, preserving the existing background
+launch in `services-start`. Controls: `start`, `stop`, `status`,
+`cleanup`/`--cleanup`. Normal stop preserves forwarding for restart; explicit
+cleanup refuses while a routing owner holds the lock. Keep one routing owner.
+
+```sh
+# Restore the saved shell service without discarding routing state:
+sh /jffs/wan-watchdog-native/rollback.sh --rollback
+```
+
+Rollback retains the inactive native bundle for inspection. After confirming
+the restored shell is running and matches its saved entry point, remove that
+inactive directory to uninstall the native replacement. Removing the watchdog
+itself follows the original README's hook-removal/owned-cleanup procedure.
+Never delete the shared ownership ledger as an uninstall shortcut.
+
+The initial installer refuses an existing native directory. An upgrade must
+stage/verify a new bundle, retain the known-good version, and use the same
+guarded stop/atomic-entry/start/health-check handoff. Never overwrite a running
+binary. Reboot/firewall-rebuild and physical WAN-outage qualification require
+a suitable maintenance environment; live checks do not manufacture those
+events.
