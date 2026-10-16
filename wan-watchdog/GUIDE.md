@@ -31,7 +31,7 @@ lifecycle, lease-change and slow-worker safeguards.
 ## Download and qualification
 
 Download **`wan-watchdog-aarch64.tar.gz`** and **`SHA256SUMS`** from the
-[prebuilt beta release](https://github.com/aiordanescu/asuswrt-merlin-tools/releases/tag/wan-tools-2026.10.15-beta.5)
+[prebuilt beta release](https://github.com/aiordanescu/asuswrt-merlin-tools/releases/tag/wan-tools-2026.10.15-beta.6)
 to your computer. No compiler, Python or Entware is needed on the router.
 Target: **aarch64 Linux**, tested on RT-AX88U / Merlin 3004.388.12_2.
 Compare the archive's SHA-256 with its entry in `SHA256SUMS`, for example on
@@ -157,8 +157,8 @@ tools. Both restore the saved configuration. Rollback rejects unrecognized live
 owners, waits for inherited locks, removes demonstrably stale PID records, and
 verifies the replacement's process, lock and monitoring output before reporting
 success. For a restored shell, that output is its status file with the running
-mode and both WAN lines. The beta.5 bundle misreports a successful shell
-restore as a failure; see the [known issue](../RELEASES.md#known-issues-in-beta5).
+mode and both WAN lines. Beta.5 misreported a successful shell restore as a
+failure; beta.6 fixes this (see [release changes](../RELEASES.md#changes-in-beta6)).
 A failed restart is reported as a failure and retains its snapshot for
 retry. The recovery mutex uses `flock`, so an interrupted shell does not leave a
 permanent directory lock.

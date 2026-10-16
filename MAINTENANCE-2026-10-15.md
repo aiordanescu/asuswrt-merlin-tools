@@ -1,6 +1,6 @@
 # WAN tools maintenance: lifecycle and routing safeguards
 
-Release: `wan-tools-2026.10.15-beta.5`; WAN Affinity version `0.4.3`.
+Release: `wan-tools-2026.10.15-beta.5`, with follow-up fixes in `beta.6`; WAN Affinity version `0.4.3`.
 Target: RT-AX88U, Asuswrt-Merlin 3004.388.12_2, Linux 4.1.51 aarch64.
 
 This update addresses the preliminary review's lifecycle, configuration,
@@ -121,8 +121,8 @@ remains limited to the listed router and firmware.
 | 4. Emergency disable validation | Stop independently; recognize disabled config before sourcing |
 | 5. Queue fallback claim | Correct docs, remove abandoned jump, verify kernel traversal |
 | 6. DDNS joins probe wait | Wait only for recorded probe PIDs |
-| 7. Handoff loses settings | Capture allowlisted running settings; persistent private config. Completed after beta.5 (see follow-up) |
-| 8. Stale PID accepted by rollback | Verify replacement process, ownership and output. Completed after beta.5 (see follow-up) |
+| 7. Handoff loses settings | Capture allowlisted running settings; persistent private config. Completed in beta.6 (see follow-up) |
+| 8. Stale PID accepted by rollback | Verify replacement process, ownership and output. Completed in beta.6 (see follow-up) |
 | 9. Inherited lock race | Bounded wait for shared lock before handoff |
 | 10. Installer/guard race | One shorter deadline and atomic transaction claim |
 | 11. Invalid LAN list truncated | Validate complete scope before emitting it |
@@ -133,11 +133,12 @@ remains limited to the listed router and firmware.
 | 16. Shadow error latches | Clear on a valid recovered inspection |
 | 17. Unacknowledged restart overlay | Retain uncertainty until an acting acknowledgement |
 
-## Follow-up after beta.5: rollback confirmation and first-handoff capture
+## Follow-up in beta.6: rollback confirmation and first-handoff capture
 
 A second review found that two of the fixes above were incomplete. Both are
-fixed in source after `wan-tools-2026.10.15-beta.5`; the beta.5 bundle does not
-contain these fixes.
+fixed in `wan-tools-2026.10.15-beta.6`; the beta.5 bundle does not contain these
+fixes. Beta.6 ships the beta.5 executables unchanged; only the watchdog
+installer, service library and documentation differ.
 
 - **Shell rollback confirmation (finding 8).** `ww_shell_ready` looked for a
   status line beginning `mode=`, but the shell's `write_status` begins
