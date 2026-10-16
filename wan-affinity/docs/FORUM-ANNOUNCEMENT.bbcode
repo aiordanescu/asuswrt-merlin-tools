@@ -16,7 +16,7 @@ The default follows OPNsense's sticky-connections policy: choose a WAN for the s
 
 A small native C helper handles connection admission through NFQUEUE. Established/confirmed connections bypass it, including unreplied UDP and TCP retries that Linux still labels NEW. The normal data stream doesn't pass through a userspace proxy. A shell controller handles startup, owned firewall rules, automatic process recovery, upgrades, disable and removal.
 
-You can run it independently using the firmware's interface/address/route readiness. With my [url=https://www.snbforums.com/threads/failover-aware-dual-wan-routing-rules-watchdog-for-asuswrt-merlin-load-balancing.97464/]WAN watchdog[/url], it subscribes to the native watchdog's local health socket for loss-aware eligibility. The watchdog still owns routing failover and recovery; affinity decides where to place new connections.
+You can run it independently using the firmware's interface/address/route readiness. With my [url=https://www.snbforums.com/threads/failover-aware-dual-wan-routing-rules-watchdog-for-asuswrt-merlin-load-balancing.97464/]WAN Watchdog[/url], it subscribes to the watchdog's local health socket for loss-aware eligibility. The watchdog still owns routing failover and recovery; affinity decides where to place new connections.
 
 GUI WAN pins and local routing keep their precedence. Unfamiliar VPN/policy-routing selectors are conservatively bypassed, which can reduce affinity coverage. IPv6 continues through native routing.
 

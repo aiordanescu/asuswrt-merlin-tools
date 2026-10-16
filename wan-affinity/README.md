@@ -37,33 +37,34 @@ Identity is the **LAN IPv4 address**, not the device MAC, user, application,
 remote site, or a permanent DHCP identity. IPv6 and protocols other than TCP/UDP
 continue through native routing.
 
-## Independent component; optional watchdog integration
+## Optional WAN Watchdog integration
 
-`wan-affinity` owns connection admission, not WAN probes or emergency household
-routing. It has its own binary, configuration, startup hooks and runtime state.
+WAN Affinity chooses a WAN for each new connection. Its health source determines
+how it knows which WANs are usable:
 
-With the [native WAN watchdog](../wan-watchdog/NATIVE.md), use
-`HEALTH_SOURCE=socket`. The helper subscribes directly to the versioned,
-read-only Unix `SOCK_SEQPACKET` service at `/tmp/wan-watchdog/health.sock`.
-Health is consumed in the admission event loop; a slow fact collector cannot
-replace newer socket information. Multiple independent consumers can subscribe.
-The watchdog retains its routing failover and recovery responsibilities.
-Its emergency routing overlay can override affinity placement. Affinity does
-not prevent the watchdog from moving household routing during an outage or
-restoring it afterward; that routing policy can still disrupt existing sessions.
+| Your setup | Setting | Health information |
+| --- | --- | --- |
+| **WAN Watchdog installed** | `HEALTH_SOURCE=socket` | WAN Watchdog's measured reachability, packet loss and recovery status |
+| **Router readiness only** | `HEALTH_SOURCE=native` | Interface, address, gateway, state and route readiness; no active Internet probes |
 
-Without the watchdog, choose `HEALTH_SOURCE=native`: interface, address,
-gateway, state and route readiness only. This does **not** detect an upstream
-failure while the interface remains up. `auto` discovers enhanced health when
-available; `legacy` explicitly selects the older file adapter. See
-[health source behavior](docs/HEALTH-SOCKET.md) and the
-[wire protocol](../common/wan-health/PROTOCOL.md).
+Here, `native` is the existing setting name for **router readiness**. The C
+implementation of [WAN Watchdog](https://github.com/aiordanescu/asuswrt-merlin-tools/blob/main/wan-watchdog/GUIDE.md) uses `socket`.
 
-A stale/disconnected publisher cannot prove recovery of an excluded WAN.
-Same-boot RAM checkpoints retain exclusions across helper restarts. In socket
-mode, new eligibility requires fresh, matching evidence. Existing associations
-retain their WAN on UNKNOWN health. Native balancing remains the fallback when
-the helper declines admission; this is not a firewall or a kill switch.
+WAN Watchdog continues to control household routing failover and recovery.
+Those routing changes can override affinity's WAN choice and interrupt existing
+sessions. The components are installed and operated independently.
+
+The default `HEALTH_SOURCE=auto` discovers WAN Watchdog when available and
+otherwise uses router readiness, retaining known exclusions. The older file
+adapter is available through `legacy`. See [health source details](docs/HEALTH-SOCKET.md)
+for fallback and recovery safeguards.
+
+The watchdog integration uses the local health socket at
+`/tmp/wan-watchdog/health.sock`. A stale or disconnected watchdog cannot prove
+that an excluded WAN has recovered. Existing associations retain their WAN
+when health is UNKNOWN; same-boot RAM checkpoints preserve exclusions across
+helper restarts. When affinity declines admission, firmware load balancing
+remains the fallback.
 
 ## Routing boundaries
 
@@ -98,7 +99,7 @@ flushed on failover, recovery, stop, upgrade, or uninstall.
 No Entware dependency or router firmware rebuild is required for the tested
 static aarch64 binary. Download **`wan-affinity-aarch64.tar.gz`** and
 **`SHA256SUMS`** from the
-[prebuilt beta release](https://github.com/aiordanescu/asuswrt-merlin-tools/releases/tag/native-wan-tools-2026.10.15-beta.1)
+[prebuilt beta release](https://github.com/aiordanescu/asuswrt-merlin-tools/releases/tag/wan-tools-2026.10.15-beta.2)
 to your computer. This build targets **aarch64 Linux** and was tested on the
 RT-AX88U / Merlin 3004.388.12_2. Compare the archive's checksum with its entry
 in `SHA256SUMS` (on macOS):
@@ -108,7 +109,7 @@ shasum -a 256 wan-affinity-aarch64.tar.gz
 ```
 
 On Linux use `sha256sum`. See
-[release and verification details](https://github.com/aiordanescu/asuswrt-merlin-tools/blob/native-wan-tools-2026.10.15-beta.1/RELEASES.md).
+[release and verification details](https://github.com/aiordanescu/asuswrt-merlin-tools/blob/wan-tools-2026.10.15-beta.2/RELEASES.md).
 Using an SSH alias named `router`, transfer the verified archive:
 
 ```sh

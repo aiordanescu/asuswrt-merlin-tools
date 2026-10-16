@@ -37,9 +37,10 @@ RECONCILE_INTERVAL=2
 # affinity mode only. Empty => derive a stable seed from the router MAC.
 AFFINITY_SEED=
 
-# auto: discover socket, native before first enhanced use; retain exclusions.
-# socket: integrated deployment, enhanced evidence required for new sources.
-# native: explicit standalone readiness. legacy: explicitly select file adapter.
+# auto: discover WAN Watchdog; otherwise router readiness, retaining exclusions.
+# socket: WAN Watchdog. Require fresh matching watchdog health for new eligibility.
+# native: Router readiness. Interface/address/gateway/state/routes; no active probes.
+# legacy: Older textual snapshot compatibility.
 HEALTH_SOURCE=auto
 HEALTH_SOCKET=/tmp/wan-watchdog/health.sock
 # Only read in HEALTH_SOURCE=legacy (private older fixtures/compatibility).

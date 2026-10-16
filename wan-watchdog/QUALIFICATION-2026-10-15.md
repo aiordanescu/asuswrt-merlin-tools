@@ -105,5 +105,5 @@ with no affinity tree, ran the 65 original tests plus 11 native Python tests
 and 434 core/codec checks, checked shell syntax and driver entry points, and
 verified bundle licensing and repository-relative documentation links.
 
-Source/build/operations: [NATIVE.md](NATIVE.md). Subscriber contract:
+Source/build/operations: [GUIDE.md](GUIDE.md). Subscriber contract:
 [PROTOCOL.md](../common/wan-health/PROTOCOL.md).

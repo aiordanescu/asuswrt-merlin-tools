@@ -1,4 +1,4 @@
-# Native watchdog
+# WAN Watchdog
 
 The C monitor owns concurrent source-bound ICMP, deadlines, in-memory loss
 windows, health/recovery classification, routing intent and publication. Its
@@ -23,7 +23,7 @@ existing ownership/transition purpose.
 ## Download and qualification
 
 Download **`wan-watchdog-native-aarch64.tar.gz`** and **`SHA256SUMS`** from the
-[prebuilt beta release](https://github.com/aiordanescu/asuswrt-merlin-tools/releases/tag/native-wan-tools-2026.10.15-beta.1)
+[prebuilt beta release](https://github.com/aiordanescu/asuswrt-merlin-tools/releases/tag/wan-tools-2026.10.15-beta.2)
 to your computer. No compiler, Python or Entware is needed on the router.
 Target: **aarch64 Linux**, tested on RT-AX88U / Merlin 3004.388.12_2.
 Compare the archive's SHA-256 with its entry in `SHA256SUMS`, for example on
@@ -69,7 +69,7 @@ test: it explicitly leases a private namespace and verifies cleanup.
 ## Install and operate
 
 For a first installation, follow the [shell setup](README.md#shell-installation-and-upgrade)
-first to establish the reference, DDNS helper and existing hooks. The native
+first to establish the reference, DDNS helper and existing hooks. The C-monitor
 bundle upgrades that running reference; it is not a fresh-install bypass.
 Qualify shadow mode on the target firmware and preserve source/runtime backups.
 The installer uses the standard `/jffs` and `/tmp/wan-watchdog` paths. It was
@@ -108,7 +108,7 @@ sh install-native.sh --install
 
 The installer saves the old entry point, arms an independent two-minute
 rollback guard, stops the identified shell owner and atomically replaces its
-entry point with the compatible wrapper. The native process takes the shared
+entry point with the compatible wrapper. The monitor process takes the shared
 exclusive lock and preserves the routing ledger and failover markers. Fresh
 eligible health on both WANs disarms the guard. Installation edits neither
 NVRAM nor existing hooks, and does not install or enable affinity.
@@ -127,13 +127,13 @@ cleanup refuses while a routing owner holds the lock. Keep one routing owner.
 sh /jffs/wan-watchdog-native/rollback.sh --rollback
 ```
 
-Rollback retains the inactive native bundle for inspection. After confirming
+Rollback retains the inactive C-monitor bundle for inspection. After confirming
 the restored shell is running and matches its saved entry point, remove that
 inactive directory to uninstall the native replacement. Removing the watchdog
 itself follows the original README's hook-removal/owned-cleanup procedure.
 Never delete the shared ownership ledger as an uninstall shortcut.
 
-The initial installer refuses an existing native directory. An upgrade must
+The initial installer refuses an existing `/jffs/wan-watchdog-native` directory. An upgrade must
 stage/verify a new bundle, retain the known-good version, and use the same
 guarded stop/atomic-entry/start/health-check handoff. Never overwrite a running
 binary. Reboot/firewall-rebuild and physical WAN-outage qualification require

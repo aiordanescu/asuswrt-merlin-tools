@@ -1,8 +1,8 @@
-# Loss-aware Dual-WAN watchdog
+# WAN Watchdog for Dual WAN load balancing
 
-The native implementation uses a persistent C monitor and shared health
+WAN Watchdog uses a persistent C monitor and shared health
 socket, with a bounded shell routing/DDNS worker. The original shell monitor
-remains available as a reference and rollback option. See [NATIVE.md](NATIVE.md)
+remains available as a reference and rollback option. See the [watchdog guide](GUIDE.md)
 for prebuilt downloads, guarded installation, optional source builds,
 operation and rollback, and [the public protocol](../common/wan-health/PROTOCOL.md)
 for independent subscribers. Measured results and remaining gates are in
@@ -35,10 +35,10 @@ outside the recognized policies require separate validation.
 
 | Implementation | Installation and operation |
 | --- | --- |
-| Native C monitor + shell actuator | [NATIVE.md](NATIVE.md): download a prebuilt aarch64 bundle (or optionally build it), qualify shadow mode, then use the guarded shell-to-native installer. Current target: RT-AX88U / Merlin 3004.388.12_2. |
-| Original shell monitor | [Shell installation and upgrade](#shell-installation-and-upgrade), below. Also establishes the reference/helper/hooks before a first native installation. |
+| C monitor + shell routing worker | [Watchdog guide](GUIDE.md): download a prebuilt aarch64 bundle (or optionally build it), qualify shadow mode, then use the guarded shell-to-C installer. Current target: RT-AX88U / Merlin 3004.388.12_2. |
+| Original shell monitor | [Shell installation and upgrade](#shell-installation-and-upgrade), below. Also establishes the reference/helper/hooks before a first C-monitor installation. |
 
-The native monitor works without subscribers. Its read-only Unix socket
+The watchdog works without subscribers. Its read-only Unix socket
 publishes complete, versioned health snapshots for multiple independent local
 consumers. [WAN affinity](../wan-affinity/) is a separate optional subscriber;
 it is installed and operated independently.
@@ -257,8 +257,8 @@ is required for installation.
 
 ## Monitoring
 
-The commands below work for either implementation. Native lifecycle controls
-and JSON health inspection are in [NATIVE.md](NATIVE.md). Native worker errors,
+The commands below work for either implementation. C-monitor lifecycle controls
+and JSON health inspection are in the [watchdog guide](GUIDE.md). Worker errors,
 eligibility, sequence and desired/applied routing generations appear in status;
 DDNS diagnostics remain in `/tmp/wan-watchdog/ddns-status`.
 
@@ -276,15 +276,15 @@ on reboot. Decision logs are in `/tmp/syslog.log` and are also volatile.
 
 ## Rollback or removal
 
-For a native-to-shell rollback, use the saved reference and shared ledger:
+For a C-to-shell rollback, use the saved reference and shared ledger:
 
 ```sh
 sh /jffs/wan-watchdog-native/rollback.sh --rollback
 ```
 
 That preserves forwarding state and restores the original entry point.
-See [native operations](NATIVE.md#install-and-operate) before deleting an
-inactive native bundle. The older-version rollback/removal procedure below
+See [watchdog operations](GUIDE.md#install-and-operate) before deleting an
+inactive C-monitor bundle. The older-version rollback/removal procedure below
 applies to the retained shell installation.
 
 Verify and stop the PID as above. Before restoring a pre-v3 script or removing
@@ -343,15 +343,15 @@ WAN_WATCHDOG_TEST_DDNS_HELPER=/jffs/scripts/wan-watchdog-ddns \
 python3 -m unittest discover -s wan-watchdog/tests
 ```
 
-When the native service is installed, set `WAN_WATCHDOG_TEST_SCRIPT` to
-`/jffs/wan-watchdog-native/wan-watchdog-legacy.sh` instead. Native C and
-socket tests/build commands are in [NATIVE.md](NATIVE.md); see
+When the C monitor is installed, set `WAN_WATCHDOG_TEST_SCRIPT` to
+`/jffs/wan-watchdog-native/wan-watchdog-legacy.sh` instead. C and
+socket tests/build commands are in the [watchdog guide](GUIDE.md); see
 [the qualification report](QUALIFICATION-2026-10-15.md) for the complete evidence.
 
 These shell tests use temporary directories and mock routing/probes; they do not
 change live WANs or client rules. Python 3.8+ runs the harness on the host;
 Python is not needed on the router. The shell monitor needs Merlin's `nvram`, `ip`, BusyBox `ping`, `awk`,
-`flock`, and `logger`. Native monitoring sends ICMP directly; its routing worker
+`flock`, and `logger`. The C monitor sends ICMP directly; its routing worker
 still uses the firmware's shell utilities. DDNS also needs native Inadyn,
 `service`, `sleep`, and `nslookup`; lookups are bounded without a `timeout` utility.
 
