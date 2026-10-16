@@ -93,21 +93,37 @@ The pass-through sentinel uses that reserved field and is cleared on re-entry.
 was tested and found unsuitable for that packet path. Existing states are not
 flushed on failover, recovery, stop, upgrade, or uninstall.
 
-## Build and install
+## Download and install
 
 No Entware dependency or router firmware rebuild is required for the tested
-static aarch64 binary. Build on a development machine, from the repository:
+static aarch64 binary. Download **`wan-affinity-aarch64.tar.gz`** and
+**`SHA256SUMS`** from the
+[prebuilt beta release](https://github.com/aiordanescu/asuswrt-merlin-tools/releases/tag/native-wan-tools-2026.10.15-beta.1)
+to your computer. This build targets **aarch64 Linux** and was tested on the
+RT-AX88U / Merlin 3004.388.12_2. Compare the archive's checksum with its entry
+in `SHA256SUMS` (on macOS):
 
 ```sh
-make -C wan-affinity host-tests
-python3 -m unittest discover -s wan-affinity/tests
-make -C wan-affinity bundle ROUTER_CC='zig cc -target aarch64-linux-musl'
+shasum -a 256 wan-affinity-aarch64.tar.gz
 ```
 
-Transfer `wan-affinity/build/wan-affinity-aarch64.tar.gz` to a private directory
-under `/tmp` on the router, extract it, then run there:
+On Linux use `sha256sum`. See
+[release and verification details](https://github.com/aiordanescu/asuswrt-merlin-tools/blob/native-wan-tools-2026.10.15-beta.1/RELEASES.md).
+Using an SSH alias named `router`, transfer the verified archive:
 
 ```sh
+scp -O wan-affinity-aarch64.tar.gz router:/tmp/
+```
+
+On the router, extract into a new private staging directory and run the
+installer there. Keep an existing staging directory for inspection rather than
+overwriting it:
+
+```sh
+umask 077
+mkdir /tmp/wan-affinity-stage
+tar -xzf /tmp/wan-affinity-aarch64.tar.gz -C /tmp/wan-affinity-stage
+cd /tmp/wan-affinity-stage
 sh install.sh --install
 ```
 
@@ -151,6 +167,20 @@ Validate before activation:
 /jffs/wan-affinity/wan-affinity.sh start
 /jffs/wan-affinity/wan-affinity.sh status
 ```
+
+## Optional source build
+
+To build on a development machine instead, run from the repository root:
+
+```sh
+make -C wan-affinity host-tests
+python3 -m unittest discover -s wan-affinity/tests
+make -C wan-affinity bundle ROUTER_CC='zig cc -target aarch64-linux-musl'
+```
+
+This creates `wan-affinity/build/wan-affinity-aarch64.tar.gz`. Transfer it and
+follow the same installation/configuration steps above. See
+[BUILDING.md](BUILDING.md) for the toolchain and diagnostic build details.
 
 ## Operations and rollback
 
@@ -230,5 +260,5 @@ and [current qualification](docs/QUALIFICATION-2026-10-15.md). Older stage repor
 in `docs/` record earlier gates and failures; they do not describe the current
 installation instructions.
 
-Source licensed under [MIT](../LICENSE). Static musl build notices are included
-in [LICENSES/musl-COPYRIGHT.txt](LICENSES/musl-COPYRIGHT.txt).
+Source licensed under [MIT](../LICENSE). Static-runtime notices are included
+in [LICENSES/](LICENSES/).

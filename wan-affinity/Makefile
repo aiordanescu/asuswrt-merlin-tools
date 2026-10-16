@@ -45,9 +45,9 @@ bundle: router
 	cp $(BUILD)/wan-affinity wan-affinity.sh wan-affinity.conf.example hooks.sh install.sh rollback.sh README.md ../LICENSE $(BUILD)/bundle/
 	cp BUILDING.md $(BUILD)/bundle/
 	cp docs/QUALIFICATION-2026-10-15.md docs/HEALTH-SOCKET.md docs/THROUGHPUT-2026-10-15.md $(BUILD)/bundle/docs/
-	cp LICENSES/musl-COPYRIGHT.txt $(BUILD)/bundle/LICENSES/
-	chmod 700 $(BUILD)/bundle/wan-affinity $(BUILD)/bundle/*.sh
-	tar -czf $(BUILD)/wan-affinity-aarch64.tar.gz -C $(BUILD)/bundle .
+	cp LICENSES/*.txt $(BUILD)/bundle/LICENSES/
+	chmod 700 $(BUILD)/bundle $(BUILD)/bundle/wan-affinity $(BUILD)/bundle/*.sh
+	COPYFILE_DISABLE=1 tar --format=ustar -czf $(BUILD)/wan-affinity-aarch64.tar.gz -C $(BUILD)/bundle .
 
 # Consumer-side shared-health qualification; intentionally outside watchdog.
 .PHONY: router-health-tests

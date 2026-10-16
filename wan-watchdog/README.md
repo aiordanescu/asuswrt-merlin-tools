@@ -2,7 +2,8 @@
 
 The native implementation uses a persistent C monitor and shared health
 socket, with a bounded shell routing/DDNS worker. The original shell monitor
-remains available as a reference and rollback option. See [NATIVE.md](NATIVE.md) for build, guarded installation,
+remains available as a reference and rollback option. See [NATIVE.md](NATIVE.md)
+for prebuilt downloads, guarded installation, optional source builds,
 operation and rollback, and [the public protocol](../common/wan-health/PROTOCOL.md)
 for independent subscribers. Measured results and remaining gates are in
 [QUALIFICATION-2026-10-15.md](QUALIFICATION-2026-10-15.md).
@@ -34,7 +35,7 @@ outside the recognized policies require separate validation.
 
 | Implementation | Installation and operation |
 | --- | --- |
-| Native C monitor + shell actuator | [NATIVE.md](NATIVE.md): build a static aarch64 bundle, qualify shadow mode, then use the guarded shell-to-native installer. Current target: RT-AX88U / Merlin 3004.388.12_2. |
+| Native C monitor + shell actuator | [NATIVE.md](NATIVE.md): download a prebuilt aarch64 bundle (or optionally build it), qualify shadow mode, then use the guarded shell-to-native installer. Current target: RT-AX88U / Merlin 3004.388.12_2. |
 | Original shell monitor | [Shell installation and upgrade](#shell-installation-and-upgrade), below. Also establishes the reference/helper/hooks before a first native installation. |
 
 The native monitor works without subscribers. Its read-only Unix socket

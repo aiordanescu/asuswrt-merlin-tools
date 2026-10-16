@@ -9,14 +9,17 @@ HEADERS = $(wildcard src/*.h ../common/wan-health/*.h)
 NATIVE = src/wan_watchdog.c src/ww_core.c src/ww_probe.c src/ww_worker.c $(COMMON) $(SOCKET)
 router: build/wan-watchdog-native build/wan-healthctl build/test_socket build/test_probe
 bundle: build/wan-watchdog-native build/wan-healthctl
-	mkdir -p build/bundle/lib
+	rm -rf build/bundle
+	mkdir -p build/bundle/lib build/bundle/LICENSES
 	cp build/wan-watchdog-native build/wan-healthctl wan-watchdog-native.sh install-native.sh build/bundle/
 	cp wan-watchdog.sh build/bundle/wan-watchdog-legacy.sh
 	cp rollback-native.sh build/bundle/rollback.sh
 	cp lib/ww-adapter.sh build/bundle/lib/
 	cp ../LICENSE build/bundle/LICENSE
+	cp LICENSES/*.txt build/bundle/LICENSES/
 	cp BUNDLE-README.md build/bundle/README.md
-	tar -czf build/wan-watchdog-native-aarch64.tar.gz -C build/bundle .
+	chmod 700 build/bundle build/bundle/wan-watchdog-native build/bundle/wan-healthctl build/bundle/*.sh build/bundle/lib/*.sh
+	COPYFILE_DISABLE=1 tar --format=ustar -czf build/wan-watchdog-native-aarch64.tar.gz -C build/bundle .
 build/wan-watchdog-native: $(NATIVE) $(HEADERS) | build
 	$(ROUTER_CC) $(CFLAGS) -static $(INCLUDES) $(filter %.c,$^) -o $@
 build/wan-healthctl: src/wan_healthctl.c $(COMMON) $(SOCKET) $(HEADERS) | build

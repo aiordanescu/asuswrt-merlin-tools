@@ -14,6 +14,23 @@ removal, and rollback instructions. The tools can be used independently. When
 using multiple tools, preserve their existing startup hooks. Affinity's
 installer adds only its own marked blocks.
 
+## Prebuilt downloads
+
+[Download the native WAN tools beta](https://github.com/aiordanescu/asuswrt-merlin-tools/releases/tag/native-wan-tools-2026.10.15-beta.1)
+to install without a compiler or Entware. The release provides separate
+`wan-affinity-aarch64.tar.gz` and `wan-watchdog-native-aarch64.tar.gz` bundles,
+SHA-256 checksums and build information. Target: **aarch64 Linux**, tested on
+the RT-AX88U / Merlin 3004.388.12_2 above. Other architectures are not included.
+The shell-only tools can be used directly from source.
+
+See [download and verification details](RELEASES.md), then follow the chosen
+component's installation guide. Source build instructions remain available in
+each component. These downloads use the same installation and qualification
+requirements as locally built bundles; affinity installs disabled, and the
+native watchdog installer upgrades an existing matching shell installation.
+
+## Behavior and qualification
+
 The watchdog is for **Dual WAN load-balance mode**, with **whole-LAN IPv4
 failover enabled by default**. It preserves local and recognized VPN routing
 and provides a configurable pinned-only mode. The DDNS workaround targets a

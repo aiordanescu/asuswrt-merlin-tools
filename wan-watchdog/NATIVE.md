@@ -20,22 +20,27 @@ consumers without watchdog policy changes. Samples stay in memory. Status and
 exclusion checkpoints stay in RAM under `/tmp`; flash writes retain the
 existing ownership/transition purpose.
 
-## Build and qualification
+## Download and qualification
 
-From the repository root, change into `wan-watchdog` before running the
-commands below. Host tests need C11 and Python 3. Use a static aarch64 Linux
-musl toolchain for the router, for example:
+Download **`wan-watchdog-native-aarch64.tar.gz`** and **`SHA256SUMS`** from the
+[prebuilt beta release](https://github.com/aiordanescu/asuswrt-merlin-tools/releases/tag/native-wan-tools-2026.10.15-beta.1)
+to your computer. No compiler, Python or Entware is needed on the router.
+Target: **aarch64 Linux**, tested on RT-AX88U / Merlin 3004.388.12_2.
+Compare the archive's SHA-256 with its entry in `SHA256SUMS`, for example on
+macOS:
 
 ```sh
-make host-tests
-python3 -m unittest discover -s tests -p 'test_*.py'
-make router bundle ROUTER_CC='zig cc -target aarch64-linux-musl'
+shasum -a 256 wan-watchdog-native-aarch64.tar.gz
 ```
 
-The bundle is `build/wan-watchdog-native-aarch64.tar.gz`. It contains the daemon,
+Use `sha256sum` on Linux. See [release verification](../RELEASES.md).
+[Building from source](#optional-source-build) remains optional.
+
+The bundle contains the daemon,
 `wan-healthctl`, wrapper, actuator, frozen reference, installer and rollback;
-test fixtures are excluded. The archive includes the MIT license and a short
-installation README. `--system-info` reports clock ticks for CPU
+test fixtures are excluded. The archive includes the MIT license,
+static-runtime notices and a short installation README.
+`--system-info` reports clock ticks for CPU
 measurement. Shadow is the default and requires a private runtime directory;
 active routing requires `--active`.
 
@@ -75,11 +80,11 @@ requires two healthy WANs and an installed shell script identical to the frozen
 reference. Review differing customizations first.
 Existing environment settings in `services-start` remain effective.
 
-Upload the built archive from the repository root (an SSH alias `router` is
-used here):
+Transfer the verified downloaded archive from your computer (an SSH alias
+`router` is used here):
 
 ```sh
-scp -O wan-watchdog/build/wan-watchdog-native-aarch64.tar.gz router:/tmp/
+scp -O wan-watchdog-native-aarch64.tar.gz router:/tmp/
 ```
 
 On the router, extract into a new private staging directory. Keep an existing
@@ -134,3 +139,21 @@ guarded stop/atomic-entry/start/health-check handoff. Never overwrite a running
 binary. Reboot/firewall-rebuild and physical WAN-outage qualification require
 a suitable maintenance environment; live checks do not manufacture those
 events.
+
+## Optional source build
+
+From the repository root, change into `wan-watchdog` before running the
+commands below. Host tests need C11 and Python 3. Use a static aarch64 Linux
+musl toolchain for the router; the release uses Zig 0.15.2:
+
+```sh
+make host-tests
+python3 -m unittest discover -s tests -p 'test_*.py'
+make router bundle ROUTER_CC='zig cc -target aarch64-linux-musl'
+```
+
+The archive is `build/wan-watchdog-native-aarch64.tar.gz` relative to the
+component directory. Transfer it and follow the same qualification and
+installation steps above. `make router` also builds the separate Linux-only
+`test_socket` and `test_probe` diagnostics described earlier; these are not
+included in the install bundle.

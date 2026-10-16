@@ -1,4 +1,8 @@
-# Building WAN affinity
+# Optional: building WAN affinity
+
+For installation without a compiler, use the
+[prebuilt download instructions](README.md#download-and-install). Building
+from source is optional; it produces the same bundle layout.
 
 Run from this directory in a complete repository checkout; the health client
 uses `../common/wan-health`. Python 3.8+ and a C11 compiler run the host tests:
@@ -20,7 +24,7 @@ Use the Makefile rather than an abbreviated direct compile command: it includes
 the connection parser, worker and shared health protocol/client. The bundle is
 `build/wan-affinity-aarch64.tar.gz`, containing the normal binary, controller,
 example config, hook editor, installer, rollback script, README, current
-build/qualification/health/throughput guides, project license and static musl
+build/qualification/health/throughput guides, project license and static-runtime
 notices.
 No test binary, fixture publisher, credentials or router-specific config is
 included. Build outputs are ignored by Git.
