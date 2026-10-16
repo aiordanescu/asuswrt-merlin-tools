@@ -55,6 +55,14 @@ the expected connmark/NAT egress; hardware acceleration remained enabled.
 These short transfers are connectivity/obvious-regression checks, not a
 statistically controlled throughput or per-flow offload benchmark.
 
+A subsequent [sustained download comparison](THROUGHPUT-2026-10-15.md) completed
+30 seconds at **637.8 Mb/s bypassing admission versus 632.2 Mb/s with affinity**
+on the same primary WAN. Identified bulk hardware hit counters increased
+throughout both runs; all 60 fresh connection probes succeeded, with no queue
+drops or helper restart. The original client pin, captured rules and hooks,
+and service PIDs matched afterward. The report includes connection-timing
+outliers and the limits of this single ordered Internet comparison.
+
 ## Kernel lifecycle and latency
 
 The final loopback run used only the dedicated test addresses, UDP port, queue
@@ -125,8 +133,8 @@ results are not a claim that every production admission stays below 1 ms.
 ## Limits
 
 No physical router reboot, actual firmware upgrade, WAN cable/disconnection test,
-full-load sustained throughput qualification, exhaustive inbound-service or VPN
-Director matrix, IPv6 support claim, or other router/firmware certification.
+maximum/aggregate throughput qualification, upload test, exhaustive inbound-service
+or VPN Director matrix, IPv6 support claim, or other router/firmware certification.
 Startup readiness, hook coexistence and loss of owned firewall objects were
 emulated/tested without rebooting or rebuilding the household firewall.
 

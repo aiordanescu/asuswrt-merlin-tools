@@ -218,9 +218,12 @@ new eligibility. This is a home-router implementation, not a claim to support
 A bounded worker reads native facts and complete U-then-C conntrack views;
 packet admission stays in the parent loop. RAM holds the frequent state and
 bounded logs. Source associations are reconstructed rather than written to
-flash. Hardware acceleration is left enabled; bounded transfer checks are not
-a full throughput/offload benchmark or a qualification of every accelerated
-flow path.
+flash. Hardware acceleration is left enabled. A
+[30-second primary-WAN download comparison](docs/THROUGHPUT-2026-10-15.md)
+measured 638 Mb/s bypassing admission versus 632 Mb/s through affinity, with
+increasing hardware hit counters in both runs and no queue drops. This
+one-client Internet sample does not establish maximum throughput, upload or
+aggregate dual-WAN capacity, or qualify every accelerated flow path.
 
 See [BUILDING.md](BUILDING.md), [router test instructions](router-tests/README.md),
 and [current qualification](docs/QUALIFICATION-2026-10-15.md). Older stage reports

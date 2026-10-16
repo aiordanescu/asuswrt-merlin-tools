@@ -44,7 +44,7 @@ bundle: router
 	mkdir -p $(BUILD)/bundle/docs $(BUILD)/bundle/LICENSES
 	cp $(BUILD)/wan-affinity wan-affinity.sh wan-affinity.conf.example hooks.sh install.sh rollback.sh README.md ../LICENSE $(BUILD)/bundle/
 	cp BUILDING.md $(BUILD)/bundle/
-	cp docs/QUALIFICATION-2026-10-15.md docs/HEALTH-SOCKET.md $(BUILD)/bundle/docs/
+	cp docs/QUALIFICATION-2026-10-15.md docs/HEALTH-SOCKET.md docs/THROUGHPUT-2026-10-15.md $(BUILD)/bundle/docs/
 	cp LICENSES/musl-COPYRIGHT.txt $(BUILD)/bundle/LICENSES/
 	chmod 700 $(BUILD)/bundle/wan-affinity $(BUILD)/bundle/*.sh
 	tar -czf $(BUILD)/wan-affinity-aarch64.tar.gz -C $(BUILD)/bundle .

@@ -41,6 +41,47 @@ private directory. No blanket state flush, real WAN failure or NVRAM commit is
 used. The health consumer executable `build/test_health_socket` exercises a
 private Unix socket without installing a firewall rule.
 
+## Sustained primary-WAN download (live service)
+
+`run_throughput.py` requires an **already healthy, LAN-wide production sticky
+service on queue 20880**, fresh socket health with both WANs eligible, and the
+Mini's exact GUI source pin to WAN0. It is a site-specific driver using the
+aliases above, Mini interface `en0`, a `192.168.1.0/24` LAN, native WAN0 mark
+`0x80000000`, policy priority 100, and OVHcloud's Hillsboro HTTPS test file.
+Review those assumptions before adapting it. It refuses surviving test-port
+connections; allow previous states to expire naturally before another run.
+
+From the component directory, explicitly authorize both client changes and
+short full-speed traffic:
+
+```sh
+python3 router-tests/run_throughput.py --allow-client-test --full-speed \
+  --evidence /absolute/private/evidence --duration 30
+```
+
+It temporarily removes only the Mini's GUI source pin in RAM, keeps its kernel
+primary-WAN rule until affinity safely adopts existing connections, then removes
+that exact rule. A five-second 100 Mb/s smoke check precedes two 10–30-second
+downloads: test-port admission bypass, followed by normal affinity admission.
+Both use the primary WAN. The bypass pre-marks only test connections to the
+chosen server; the production helper, acceleration and other clients stay active.
+The test can briefly consume available primary-WAN bandwidth and several GB
+of data. Bodies are counted in memory and discarded.
+
+The source-bound client creates a new small-page HTTPS connection once per
+second during each download. Large-file requests are not used for those probes.
+The host checks live health and queue drops every approximately two seconds,
+records identified bulk hardware counters, and checks WAN connmark/NAT egress.
+Any health deterioration, unexpected HTTP/curl failure or failed evidence check
+aborts the comparison. Cleanup restores the exact pin and source rule and removes
+the test mark rule; a separate router-local 600-second guard also does that if
+the host disappears. Each client transfer has its own duration cutoff.
+
+Before/after rule, pin, PID and hook comparisons and private client/router
+evidence accompany the result. It does not deliberately fail a WAN, change
+other GUI pins, restart a production process or flush states. See the
+[measured results and limits](../docs/THROUGHPUT-2026-10-15.md).
+
 The older bridge and full-lifecycle loopback drivers are described below.
 
 These are explicit live-kernel diagnostics, not an installer or a production

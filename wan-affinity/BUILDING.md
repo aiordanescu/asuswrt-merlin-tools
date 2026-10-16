@@ -20,7 +20,8 @@ Use the Makefile rather than an abbreviated direct compile command: it includes
 the connection parser, worker and shared health protocol/client. The bundle is
 `build/wan-affinity-aarch64.tar.gz`, containing the normal binary, controller,
 example config, hook editor, installer, rollback script, README, current
-build/qualification/health guides, project license and static musl notices.
+build/qualification/health/throughput guides, project license and static musl
+notices.
 No test binary, fixture publisher, credentials or router-specific config is
 included. Build outputs are ignored by Git.
 
@@ -54,3 +55,5 @@ instance overrides. Production uses the defaults. See the [README](README.md)
 for installation and [qualification report](docs/QUALIFICATION-2026-10-15.md)
 for the scope of live validation. Actual router reboot, firmware upgrade and
 maximum sustained throughput remain untested on the sole live router.
+The [one-client primary download comparison](docs/THROUGHPUT-2026-10-15.md)
+covers the observed forwarding rate and per-flow hardware acceleration.

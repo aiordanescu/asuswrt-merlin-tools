@@ -22,7 +22,9 @@ GUI WAN pins and local routing keep their precedence. Unfamiliar VPN/policy-rout
 
 [b]Testing and scope[/b]
 
-This is an early release tested on my [b]RT-AX88U running Merlin 3004.388.12_2[/b]. Tests include both WAN egress paths for HTTPS/DNS/UDP-443, sticky versus affinity recovery, watchdog-socket interruptions, connection-state edge cases, helper crash/stall recovery, and repair of its own firewall rules. Hardware acceleration stays enabled; the bounded transfer checks aren't a full throughput benchmark.
+This is an early release tested on my [b]RT-AX88U running Merlin 3004.388.12_2[/b]. Tests include both WAN egress paths for HTTPS/DNS/UDP-443, sticky versus affinity recovery, watchdog-socket interruptions, connection-state edge cases, helper crash/stall recovery, and repair of its own firewall rules.
+
+A 30-second primary-WAN download comparison measured about [b]638 Mb/s bypassing admission versus 632 Mb/s through affinity[/b], with increasing hardware flow counters, all 60 new-connection probes succeeding, and no queue drops. That's one wired client and one download stream over the Internet, not a maximum-throughput or aggregate dual-WAN claim. The qualification notes include the full method and timing outliers.
 
 The installer starts disabled. Busy clients with mixed pre-existing WAN connections may stay under native balancing until those states drain. Other hardware/firmware, an actual reboot/firmware upgrade, and arbitrary VPN policy combinations haven't been fully qualified.
 

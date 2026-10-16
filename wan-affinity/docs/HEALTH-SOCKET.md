@@ -26,3 +26,6 @@ See the [public protocol](../../common/wan-health/PROTOCOL.md),
 [qualification report](QUALIFICATION-2026-10-15.md). Actual router reboot,
 firmware upgrade and maximum sustained throughput remain untested; the report
 distinguishes those limits from guarded live installation and lifecycle checks.
+The [primary-WAN download report](THROUGHPUT-2026-10-15.md) records a subsequent
+30-second comparison with per-flow acceleration evidence; it does not establish
+maximum or aggregate capacity.
