@@ -13,6 +13,9 @@ Tested hardware: **RT-AX88U, Merlin 3004.388.12_2, Linux 4.1.51, aarch64**.
 Treat other firmware, router architectures, and IPv6 as unqualified. Read the
 [qualification report](docs/QUALIFICATION-2026-10-15.md) before deployment.
 
+Discussion and user test reports:
+[WAN Affinity on SNBForums](https://www.snbforums.com/threads/wan-affinity-sticky-connections-for-asuswrt-merlin-dual-wan-load-balancing.98093/).
+
 ## Behavior
 
 - A new source chooses an eligible WAN using the firmware's `wans_lb_ratio`
