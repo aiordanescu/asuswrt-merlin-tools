@@ -51,6 +51,8 @@ The watchdog build/tests do not require an affinity source tree. Consumer
 integration tests and drivers belong to their respective components; their
 previous development results are recorded separately in the
 [qualification report](QUALIFICATION-2026-10-15.md).
+The [WAN affinity guide](../wan-affinity/) describes the optional sticky-source
+consumer and links its own current qualification results.
 
 On the tested router, `build/test_socket` exercises the public server/client
 with multiple readers, a slow reader, publisher restart and invalid/stale

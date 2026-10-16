@@ -39,7 +39,8 @@ outside the recognized policies require separate validation.
 
 The native monitor works without subscribers. Its read-only Unix socket
 publishes complete, versioned health snapshots for multiple independent local
-consumers. No affinity component is required or included in this update.
+consumers. [WAN affinity](../wan-affinity/) is a separate optional subscriber;
+it is installed and operated independently.
 The watchdog retains routing failover, restoration and DDNS responsibilities.
 
 ## Policy

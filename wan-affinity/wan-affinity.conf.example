@@ -1,0 +1,49 @@
+# wan-affinity configuration
+# Installed to /jffs/wan-affinity/wan-affinity.conf. Sourced by wan-affinity.sh
+# and parsed as KEY=VALUE by the helper. Nothing is enabled until ENABLED=1 and
+# you explicitly run `wan-affinity.sh start`.
+
+# Master switch. The controller refuses to activate while this is 0.
+ENABLED=0
+
+# sticky  = retain the WAN across recovery; release after full tracked idle
+# affinity = deterministic per-LAN-IP WAN preference, returns after recovery
+MODE=sticky
+
+# Single-client test scope (required). One LAN address only.
+# Set LAN_SCOPE=1 (plus ALLOW_LAN_SCOPE=1) to deliberately cover the whole LAN.
+CLIENT=192.168.1.100
+LAN_SCOPE=0
+ALLOW_LAN_SCOPE=0
+
+# Repair lost owned rules/restart an exited helper every 10 seconds; a stalled
+# status heartbeat triggers a bounded restart after two unchanged observations.
+# stop remains stopped until start (or the next boot); disable persists.
+SUPERVISE=1
+
+# NFQUEUE used by the helper. Must match between the chain and the binary.
+QUEUE_NUM=20880
+QUEUE_MAXLEN=1024
+
+# Lifecycle timing.
+# IDLE_SECONDS=0 releases after a complete unconfirmed-then-confirmed view
+# proves relevant states gone. Admissions during collection are retained.
+IDLE_SECONDS=0
+MAX_RECONCILE_SECONDS=15
+PROVISIONAL_WARNING_SECONDS=2
+# Collection runs in a bounded worker, outside the packet-admission loop.
+RECONCILE_INTERVAL=2
+
+# affinity mode only. Empty => derive a stable seed from the router MAC.
+AFFINITY_SEED=
+
+# auto: discover socket, native before first enhanced use; retain exclusions.
+# socket: integrated deployment, enhanced evidence required for new sources.
+# native: explicit standalone readiness. legacy: explicitly select file adapter.
+HEALTH_SOURCE=auto
+HEALTH_SOCKET=/tmp/wan-watchdog/health.sock
+# Only read in HEALTH_SOURCE=legacy (private older fixtures/compatibility).
+SNAPSHOT_PATH=/tmp/wan-watchdog/health.v1
+
+# Runtime state (frequent, volatile) lives here.
+STATUS_DIR=/tmp/wan-affinity

@@ -1,0 +1,31 @@
+[b]WAN Affinity: sticky connections for Asuswrt-Merlin Dual WAN load balancing[/b]
+
+I've been working on a companion to my WAN watchdog: [b]WAN Affinity[/b]. It keeps new IPv4 TCP and UDP connections from the same LAN address on the same WAN while that client has tracked Internet connections.
+
+The default follows OPNsense's sticky-connections policy: choose a WAN for the source, keep using it while states remain active, and release the association once a complete connection-state check proves them gone. There's no extra idle timeout by default. The initial choice uses the router's configured WAN weights.
+
+[b]What happens on failover?[/b]
+[list]
+[*]New connections can use the other eligible WAN when the current one becomes unusable.
+[*]With default sticky mode, recovery doesn't pull that client back immediately.
+[*]Existing connections keep their marks and NAT mappings. The tool doesn't flush sessions or promise that a download survives losing its WAN.
+[*]An optional affinity mode gives each source IP a stable preferred WAN and can return future connections to it after recovery.
+[/list]
+
+[b]How it works[/b]
+
+A small native C helper handles connection admission through NFQUEUE. Established/confirmed connections bypass it, including unreplied UDP and TCP retries that Linux still labels NEW. The normal data stream doesn't pass through a userspace proxy. A shell controller handles startup, owned firewall rules, automatic process recovery, upgrades, disable and removal.
+
+You can run it independently using the firmware's interface/address/route readiness. With my [url=https://www.snbforums.com/threads/failover-aware-dual-wan-routing-rules-watchdog-for-asuswrt-merlin-load-balancing.97464/]WAN watchdog[/url], it subscribes to the native watchdog's local health socket for loss-aware eligibility. The watchdog still owns routing failover and recovery; affinity decides where to place new connections.
+
+GUI WAN pins and local routing keep their precedence. Unfamiliar VPN/policy-routing selectors are conservatively bypassed, which can reduce affinity coverage. IPv6 continues through native routing.
+
+[b]Testing and scope[/b]
+
+This is an early release tested on my [b]RT-AX88U running Merlin 3004.388.12_2[/b]. Tests include both WAN egress paths for HTTPS/DNS/UDP-443, sticky versus affinity recovery, watchdog-socket interruptions, connection-state edge cases, helper crash/stall recovery, and repair of its own firewall rules. Hardware acceleration stays enabled; the bounded transfer checks aren't a full throughput benchmark.
+
+The installer starts disabled. Busy clients with mixed pre-existing WAN connections may stay under native balancing until those states drain. Other hardware/firmware, an actual reboot/firmware upgrade, and arbitrary VPN policy combinations haven't been fully qualified.
+
+[url=https://github.com/aiordanescu/asuswrt-merlin-tools/tree/main/wan-affinity]Source, installation, rollback and qualification notes[/url]
+
+This gets its own thread because connection stickiness and WAN health monitoring solve different problems, even though they work together on my router. Feedback and carefully scoped test reports are welcome.

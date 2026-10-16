@@ -6,11 +6,13 @@ Asuswrt-Merlin 3004.388.12_2**.
 | Project | What it fixes |
 | --- | --- |
 | [WAN watchdog](wan-watchdog/) | Loss-aware IPv4 failover with a native C monitor, retained shell routing/DDNS worker, and a versioned local health socket for independent subscribers. Whole-LAN and pinned modes preserve the existing recovery policy. |
+| [WAN affinity](wan-affinity/) | Per-source IPv4 sticky WAN placement for new TCP/UDP connections, with OPNsense-style defaults and optional direct watchdog health subscription. |
 | [Namecheap DDNS](namecheap-ddns/) | Adds the selected WAN IP to updates and repairs full-hostname verification and stale-cache refresh behavior. |
 
 Each folder contains source and its installation, upgrade, monitoring,
 removal, and rollback instructions. The tools can be used independently. When
-using both, merge their startup commands into your existing `services-start`.
+using multiple tools, preserve their existing startup hooks. Affinity's
+installer adds only its own marked blocks.
 
 The watchdog is for **Dual WAN load-balance mode**, with **whole-LAN IPv4
 failover enabled by default**. It preserves local and recognized VPN routing
@@ -33,8 +35,10 @@ native service versus 11.11% for the shell reference**. Shell reconciliation
 still dominates; the larger shadow-mode saving is not the full service cost.
 Build and guarded installation instructions are in
 [the native guide](wan-watchdog/NATIVE.md); the watchdog README retains the
-separate shell installation path. Consumer integrations will be published
-separately.
+separate shell installation path. The [affinity component](wan-affinity/) is
+the first consumer: it
+selects WANs for new connections while the watchdog retains routing failover
+and recovery authority. See its [qualification and limitations](wan-affinity/docs/QUALIFICATION-2026-10-15.md).
 
 Run the watchdog's original 65 simulated state tests without accessing a router:
 
