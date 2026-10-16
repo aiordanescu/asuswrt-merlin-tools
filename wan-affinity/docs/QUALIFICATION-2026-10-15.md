@@ -146,8 +146,10 @@ Startup readiness, hook coexistence and loss of owned firewall objects were
 emulated/tested without rebooting or rebuilding the household firewall.
 
 The helper supports the default conntrack zone, 1,024 source associations and
-4,096 tracked tuples. Full, malformed, stale or incomplete views retain
-uncertainty and do not prove idle. Unknown policy-routing selectors may bypass
+4,096 placeable connections, with 64 local prefixes and 128 policy selectors
+after merging covered entries (0.4.4; see the README's status and limits).
+Full, malformed, stale or incomplete views retain uncertainty and do not prove
+idle; an incomplete routing domain pauses placement. Unknown policy-routing selectors may bypass
 more traffic than necessary, including an entire LAN for a mark-only VPN rule.
 The running helper can return admission to firmware balancing. Kernel
 absent-listener/queue-full bypass skips later rules in the current mangle hook;

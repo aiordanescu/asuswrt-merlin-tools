@@ -1,6 +1,6 @@
 # WAN tools maintenance: lifecycle and routing safeguards
 
-Release: `wan-tools-2026.10.15-beta.5`, with follow-up fixes in `beta.6`; WAN Affinity version `0.4.3`.
+Release: `wan-tools-2026.10.15-beta.5`, with follow-up fixes in `beta.6` and `beta.7`; WAN Affinity version `0.4.4`.
 Target: RT-AX88U, Asuswrt-Merlin 3004.388.12_2, Linux 4.1.51 aarch64.
 
 This update addresses the preliminary review's lifecycle, configuration,
@@ -160,3 +160,49 @@ first install to the shell, and cover both capture sources. The watchdog suite
 now passes 82 shell/DDNS/lifecycle tests; the three new rollback and capture
 tests fail against the beta.5 scripts. This follow-up was validated with host
 tests only, not on the router.
+
+## Affinity 0.4.4 in beta.7: capacity limits
+
+The second review found two undocumented capacity limits in WAN Affinity that
+stopped placement for the whole LAN.
+
+- **Routing domain.** Local prefixes had 24 slots, and the 8 reserved ranges and
+  the LAN used 9 of them. That left 15 for main-table routes, and every route
+  counted, including duplicates and subnets of ranges already listed. The
+  tested router used 12. GUI pins and policy exclusions shared 64 slots.
+  Exceeding either made the refresh worker exit on every cycle, so health went
+  stale and the helper could not start. Entries covered by a broader entry are
+  now merged and use no capacity, and the limits are 64 local prefixes and 128
+  policy selectors. On the tested router the same routes and rules use 11 and
+  20. If the domain still can't be represented exactly, the helper keeps
+  refreshing and pauses placement: new connections use firmware balancing and
+  status reports `domain=local-capacity`, `pin-capacity`, `unsupported-pin` or
+  `truncated-rule`. A partial domain could otherwise send local or VPN traffic
+  to a WAN.
+- **Connection view.** Every LAN-sourced TCP/UDP conntrack row counted toward
+  4,096, including DNS to the router and LAN-local traffic. One more row rejected
+  the whole refresh, which made WAN facts stale and stopped failover decisions
+  and expiry. The view now holds only connections the helper could place. If
+  those still exceed 4,096, the refresh keeps WAN facts current but neither
+  reconciles nor expires mappings, since a partial view cannot prove a source
+  idle. Status reports `view_overflow` and `last_error=view-capacity`.
+
+The status file has a new `capacity` line with the domain state, local prefix
+and policy selector counts, placement passes caused by an incomplete domain,
+and view rows and overflow. The engine's decisions and the mapping checkpoint
+format are unchanged.
+
+### Validation
+
+Host: 289 engine/checkpoint C checks (also under ASan/UBSan), including the
+tested router's main-table shape, capacity limits, covering-prefix
+replacement, GUI pin and policy-rule parsing, and view filtering and overflow;
+21 worker C checks and 107 Affinity Python tests. Router, with the production
+service running: the loopback lifecycle regression (never-confirmed cleanup,
+held-packet retention, 360 admissions during a slow refresh, worker timeout and
+crash cleanup) and the mixed-session adoption matrix in both modes with real
+HTTPS connections. In that run the test helper read the router's real routes,
+rules and pins and reported `domain=ok local_prefixes=11/64
+policy_selectors=20/128`. Firewall rules, policy rules, pins and hooks were
+restored. The overflow paths are host-tested; no router test produced more than
+4,096 placeable connections or an over-capacity domain.

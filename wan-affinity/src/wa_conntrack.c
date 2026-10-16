@@ -54,8 +54,15 @@ int wa_ct_view_add(wa_ct_view *view,const wa_ct_record *row) {
         }
         slot=(slot+1)&mask;
     }
-    if(view->count>=WA_MAX_STATES)return -1;
+    if(view->count>=WA_MAX_STATES){view->overflow++;return -1;}
     view->rows[view->count]=*row;view->slots[slot]=++view->count;return 0;
+}
+
+int wa_ct_view_add_relevant(wa_ct_view *view,const wa_engine *e,const wa_ct_record *row) {
+    wa_state st;memset(&st,0,sizeof st);
+    st.src=row->src;st.dst=row->dst;st.sport=row->sport;st.dport=row->dport;st.proto=row->proto;
+    if(!wa_state_relevant(e,&st))return 1;
+    return wa_ct_view_add(view,row);
 }
 
 int wa_ct_egress(const wa_ct_record *row,const wa_health *health) {

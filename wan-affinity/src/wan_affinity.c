@@ -62,7 +62,7 @@
 #include <time.h>
 #include <unistd.h>
 
-#define WA_VERSION "0.4.3"
+#define WA_VERSION "0.4.4"
 static wa_health_feed health_feed;
 
 static volatile sig_atomic_t stopping;
@@ -74,6 +74,8 @@ static unsigned long refresh_ok,refresh_failed;
 static int kernel_unconfirmed;
 static double last_refresh_success;
 static pid_t refresh_pid;
+static int domain_status,view_rows,view_overflow;
+static unsigned long domain_passes;
 
 static void on_signal(int sig) {
     (void)sig;
@@ -122,6 +124,7 @@ typedef struct {
     double facts_started,ct_started,completed;
     wa_health health;
     wa_domain domain;
+    int domain_status;
     wa_cidr lan;
     int weight[2];
     char affinity_seed[65];
@@ -220,14 +223,17 @@ static int nvram_get(const char *name, char *buf, size_t len) {
     return buf[0] != 0;
 }
 
-static void domain_from_router(wa_engine *e, const wa_config *c) {
+/* Returns a WA_DOMAIN_* status. Capacity or parse problems pause placement in
+ * the parent instead of failing every refresh. */
+static int domain_from_router(wa_engine *e, const wa_config *c) {
 #ifdef WA_TESTING
     if(c->test_loopback) {
         memset(&e->domain,0,sizeof e->domain);
         wa_domain_set_lan(e,0x7f580002u,0xffffffffu);
-        return;
+        return WA_DOMAIN_OK;
     }
 #endif
+    int status=WA_DOMAIN_OK,row_status;
     e->domain.n_local = e->domain.n_vpn = e->domain.n_pins = 0;
     const char *reserved[] = {"0.0.0.0/8","10.0.0.0/8","172.16.0.0/12","192.168.0.0/16","127.0.0.0/8","169.254.0.0/16","224.0.0.0/4","255.255.255.255/32"};
     for (unsigned i=0;i<sizeof reserved/sizeof reserved[0];i++) {
@@ -253,37 +259,13 @@ static void domain_from_router(wa_engine *e, const wa_config *c) {
         wa_domain_set_lan(e,client,0xffffffffu);
     }
     char rl[8192];
-    if (nvram_get("wans_routing_rulelist", rl, sizeof rl)) {
-        char *tok = strtok(rl, "<");
-        while (tok) {
-            char *gt = strchr(tok, '>');
-            if (gt) {
-                *gt = 0;
-                char *destination=gt+1,*end=strchr(destination,'>');
-                if(end)*end=0;
-                uint32_t s=0,sm=0,d=0,dm=0;
-                int bad=0;
-                if(*tok && strcmp(tok,"all"))bad=wa_parse_cidr(tok,&s,&sm);
-                if(*destination && strcmp(destination,"all"))bad|=wa_parse_cidr(destination,&d,&dm);
-                if(bad || e->domain.n_pins>=WA_MAX_PINS) {
-                    fprintf(stderr,"unsupported or excessive GUI pins; refusing classification\n");exit(2);
-                }
-                wa_domain_add_pin(e,s,sm,d,dm);
-            }
-            tok = strtok(NULL, "<");
-        }
-    }
+    if (nvram_get("wans_routing_rulelist", rl, sizeof rl)) status=wa_policy_add_gui_pins(e,rl);
     FILE *routes=popen("ip -4 route show table main", "r");
     if(!routes)die("read local routes");
     char row[512];
-    while(fgets(row,sizeof row,routes)) {
-        char cidr[64];uint32_t n,maskv;
-        if(sscanf(row,"%63s",cidr)!=1 || !strcmp(cidr,"default"))continue;
-        if(!wa_parse_cidr(cidr,&n,&maskv) && maskv) {
-            if(e->domain.n_local>=WA_MAX_CIDR*3){fprintf(stderr,"too many local routes\n");exit(2);}
-            wa_domain_add_local(e,n,maskv);
-        }
-    }
+    /* Read every row even after a problem so the command is never cut off. */
+    while(fgets(row,sizeof row,routes))
+        if((row_status=wa_policy_add_route(e,row)) && !status)status=row_status;
     if(pclose(routes))die("local route read");
     /* Preserve policy routing outside firmware WAN selection. For unfamiliar
      * tables, exclude the complete source/destination selector even if the
@@ -291,15 +273,10 @@ static void domain_from_router(wa_engine *e, const wa_config *c) {
      * coverage, but cannot pull VPN traffic into a WAN table. */
     routes=popen("ip -4 rule show", "r");
     if(!routes)die("policy rule read");
-    while(fgets(row,sizeof row,routes)) {
-        uint32_t s=0,sm=0,d=0,dm=0;
-        int excluded=wa_policy_exclusion(row,&s,&sm,&d,&dm);
-        if(excluded<0){fprintf(stderr,"truncated policy rule\n");exit(2);}
-        if(!excluded)continue;
-        if(e->domain.n_pins>=WA_MAX_PINS){fprintf(stderr,"too many policy exclusions\n");exit(2);}
-        wa_domain_add_pin(e,s,sm,d,dm);
-    }
+    while(fgets(row,sizeof row,routes))
+        if((row_status=wa_policy_add_rule(e,row)) && !status)status=row_status;
     if(pclose(routes))die("policy rule read");
+    return status;
 }
 
 static void firmware_health_from_router(wa_engine *e) {
@@ -523,7 +500,8 @@ static int collect_table(wa_engine *e,const wa_config *c,wa_ct_view *view,int un
         if(c->test_loopback && (row.dst!=0x7f580001u || row.proto!=17 || row.dport!=58888))continue;
         if(c->test_port_base && (row.sport<c->test_port_base || row.sport>=c->test_port_base+1000))continue;
 #endif
-        if(wa_ct_view_add(view,&row))bad=1;
+        /* Overflow is counted in the view and handled by the parent. */
+        wa_ct_view_add_relevant(view,e,&row);
     }
     if(ferror(p))bad=1;
     fclose(p);int status=-1;
@@ -557,10 +535,11 @@ static int collect_observation(void *arg,void *result,size_t capacity) {
         while(nanosleep(&delay,&delay) && errno==EINTR){}
     }
 #endif
-    firmware_health_from_router(e);ratio_from_router(e);domain_from_router(e,c);
+    firmware_health_from_router(e);ratio_from_router(e);
+    int domain=domain_from_router(e,c);
     if(e->mode==WA_AFFINITY && !e->affinity_seed[0])derive_affinity_seed(e->affinity_seed,sizeof e->affinity_seed);
     if(c->health_source==WA_HEALTH_LEGACY)load_snapshot(e,c,mono());
-    o->health=e->health;o->domain=e->domain;o->lan=e->lan;
+    o->health=e->health;o->domain=e->domain;o->domain_status=domain;o->lan=e->lan;
     memcpy(o->weight,e->weight,sizeof o->weight);
     memcpy(o->affinity_seed,e->affinity_seed,sizeof o->affinity_seed);
     o->ct_started=mono();
@@ -569,7 +548,8 @@ static int collect_observation(void *arg,void *result,size_t capacity) {
 }
 
 static int apply_observation(wa_engine *e,const wa_observation *o,double now) {
-    if(o->magic!=0x57414632u || o->view.count<0 || o->view.count>WA_MAX_STATES ||
+    if(o->magic!=0x57414632u || o->view.count<0 || o->view.count>WA_MAX_STATES || o->view.overflow<0 ||
+       o->domain_status<WA_DOMAIN_OK || o->domain_status>WA_DOMAIN_TRUNCATED_RULE ||
        now-o->facts_started>e->max_reconcile_age || o->ct_started>o->completed || o->completed>now) {
         e->uncertain=1;snprintf(e->last_error,sizeof e->last_error,"stale-worker-result");return -1;
     }
@@ -580,6 +560,22 @@ static int apply_observation(wa_engine *e,const wa_observation *o,double now) {
     e->domain=o->domain;e->lan=o->lan;
     memcpy(e->weight,o->weight,sizeof e->weight);
     memcpy(e->affinity_seed,o->affinity_seed,sizeof e->affinity_seed);
+    if(o->domain_status!=domain_status) {
+        if(o->domain_status)fprintf(stderr,"routing domain incomplete (%s); new connections use firmware balancing\n",wa_domain_status_name(o->domain_status));
+        else fprintf(stderr,"routing domain complete; placement resumed\n");
+        domain_status=o->domain_status;
+    }
+    if(!o->view.overflow!=!view_overflow)
+        fprintf(stderr,o->view.overflow?"connection view exceeds %d placeable rows; expiry paused\n":"connection view fits %d rows; expiry resumed\n",WA_MAX_STATES);
+    view_rows=o->view.count;view_overflow=o->view.overflow;
+    if(o->view.overflow) {
+        /* A partial view cannot prove that a source is idle, so nothing is
+         * reconciled or expired. Its WAN facts are current, keeping failover
+         * decisions fresh while placement continues within table capacity. */
+        e->uncertain=1;snprintf(e->last_error,sizeof e->last_error,"view-capacity");
+        last_refresh_success=o->facts_started;
+        return 0;
+    }
     static wa_state states[WA_MAX_STATES];
     kernel_unconfirmed=0;
     for(int i=0;i<o->view.count;i++) {
@@ -619,6 +615,8 @@ static void write_status(wa_engine *e, const wa_config *c) {
     fprintf(f,"socket_instance=%s evidence_age_ms=%lld/%lld publisher_reason=%s/%s publisher_excluded=%u/%u\n",instance,evidence_age_ms[0],evidence_age_ms[1],
         wh_reason_name(health_feed.client.state.wan[0].reason),wh_reason_name(health_feed.client.state.wan[1].reason),health_feed.client.state.wan[0].excluded,health_feed.client.state.wan[1].excluded);
     fprintf(f,"adapter loop_mono_ns=%llu queue_packets=%lu passes=%lu missing_ctid=%lu tcp=%lu udp=%lu lifecycle=unconfirmed+confirmed refresh_ok=%lu refresh_failed=%lu kernel_unconfirmed=%d refresh_pid=%ld refresh_ms=%.2f max_refresh_ms=%.2f max_timestamp_delay_us=%.0f\n",(unsigned long long)health_now,queue_packets,queue_passes,missing_ctid,tcp_admissions,udp_admissions,refresh_ok,refresh_failed,kernel_unconfirmed,(long)refresh_pid,last_refresh_ms,max_refresh_ms,max_timestamp_delay_us);
+    fprintf(f,"capacity domain=%s local_prefixes=%d/%d policy_selectors=%d/%d domain_passes=%lu view_rows=%d/%d view_overflow=%d\n",
+        wa_domain_status_name(domain_status),e->domain.n_local,WA_MAX_LOCAL,e->domain.n_pins,WA_MAX_PINS,domain_passes,view_rows,WA_MAX_STATES,view_overflow);
     fclose(f);
     if (rename(tmp, path) != 0) remove(tmp);
 }
@@ -749,6 +747,13 @@ static void run(wa_engine *e, wa_config *c) {
                     }
                     if (!payload || plen < 20 || (payload[0] >> 4) != 4) {
                         queue_passes++;
+                        verdict(queue_fd, c, id, (mark & WA_NONWAN_MASK) | WA_PASS_SENTINEL, NF_REPEAT);
+                        continue;
+                    }
+                    if (domain_status) {
+                        /* An incomplete domain could send local or policy-routed
+                         * traffic to a WAN; firmware balancing places it instead. */
+                        queue_passes++;domain_passes++;
                         verdict(queue_fd, c, id, (mark & WA_NONWAN_MASK) | WA_PASS_SENTINEL, NF_REPEAT);
                         continue;
                     }

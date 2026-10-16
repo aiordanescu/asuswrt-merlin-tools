@@ -70,8 +70,9 @@ helper restarts. When the running helper declines admission, it returns the
 packet to firmware load balancing. Kernel queue bypass has a different path,
 described under [operations and rollback](#operations-and-rollback).
 
-The [0.4.3 maintenance notes](../MAINTENANCE-2026-10-15.md) cover lifecycle
-repairs and the kernel fallback verification.
+The [maintenance notes](../MAINTENANCE-2026-10-15.md) cover the 0.4.3
+lifecycle repairs, the kernel fallback verification and the 0.4.4 capacity
+handling.
 
 ## Routing boundaries
 
@@ -106,7 +107,7 @@ flushed on failover, recovery, stop, upgrade, or uninstall.
 No Entware dependency or router firmware rebuild is required for the tested
 static aarch64 binary. Download **`wan-affinity-aarch64.tar.gz`** and
 **`SHA256SUMS`** from the
-[prebuilt beta release](https://github.com/aiordanescu/asuswrt-merlin-tools/releases/tag/wan-tools-2026.10.15-beta.6)
+[prebuilt beta release](https://github.com/aiordanescu/asuswrt-merlin-tools/releases/tag/wan-tools-2026.10.15-beta.7)
 to your computer. This build targets **aarch64 Linux** and was tested on the
 RT-AX88U / Merlin 3004.388.12_2. Compare the archive's checksum with its entry
 in `SHA256SUMS` (on macOS):
@@ -116,7 +117,7 @@ shasum -a 256 wan-affinity-aarch64.tar.gz
 ```
 
 On Linux use `sha256sum`. See
-[release and verification details](https://github.com/aiordanescu/asuswrt-merlin-tools/blob/wan-tools-2026.10.15-beta.6/RELEASES.md).
+[release and verification details](https://github.com/aiordanescu/asuswrt-merlin-tools/blob/wan-tools-2026.10.15-beta.7/RELEASES.md).
 Using an SSH alias named `router`, transfer the verified archive:
 
 ```sh
@@ -254,12 +255,35 @@ counts sources waiting for their next new connection; it does not require an
 idle period. Per-source `members` belong to the current mapping; `legacy` counts
 older connections whose placement stays unchanged.
 
-The helper bounds associations at 1,024 and tracked tuples at 4,096, plus
-bounded local/policy selector lists. Incomplete, malformed or oversized views
-are rejected. Uncertain observations retain state; stale firmware facts prevent
-new eligibility. This is a home-router implementation, not a claim to support
-300,000 simultaneous conntrack entries. Monitor `uncertain`, `last_error`,
-`refresh_failed`, queue drops, CPU and memory when evaluating a busier network.
+The status file's `capacity` line reports the helper's fixed limits:
+
+- **4,096 placeable connections** (`view_rows`). Only connections the helper
+  could place count: TCP/UDP from the LAN scope to destinations that are not
+  local, routed in the main table, GUI-pinned or policy-routed. DNS to the
+  router and LAN traffic don't count. Beyond the limit (`view_overflow` above
+  0, `last_error=view-capacity`), WAN facts keep refreshing so failover stays
+  current, but no mapping expires, because a partial view cannot prove a source
+  idle. New sources are placed while the state table has room; after that, new
+  connections use firmware balancing (`state-table-full`). Normal expiry
+  resumes once the view fits.
+- **1,024 source mappings.**
+- **64 local prefixes** (`local_prefixes`): reserved ranges, the LAN and
+  main-table routes. **128 policy selectors** (`policy_selectors`): GUI pins
+  and unfamiliar policy rules. An entry covered by a broader one uses no
+  capacity, so per-WAN DNS routes, gateway host routes and subnets of private
+  ranges are merged.
+- If the routing domain still can't be represented exactly (`domain=` shows
+  `local-capacity`, `pin-capacity`, `unsupported-pin` or `truncated-rule`),
+  placement pauses: new connections use firmware balancing (`domain_passes`
+  counts them), existing connections keep their WANs, and placement resumes
+  when a refresh finds the domain complete. A partial domain could otherwise
+  send local or VPN traffic to a WAN.
+
+Malformed or truncated conntrack views are rejected. Uncertain observations
+retain state; stale firmware facts prevent new eligibility. This is a
+home-router implementation, not a claim to support 300,000 simultaneous
+conntrack entries. Monitor `uncertain`, `last_error`, `refresh_failed`, the
+`capacity` line, queue drops, CPU and memory when evaluating a busier network.
 
 A bounded worker reads firmware facts and complete U-then-C conntrack views;
 packet admission stays in the parent loop. RAM holds the frequent state and

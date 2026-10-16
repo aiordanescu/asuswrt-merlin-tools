@@ -581,7 +581,85 @@ static void test_confirmed_identity_reuse_is_not_mapping_membership(void) {
     CHECK(wa_tick(&e,3.1)==1,"unrelated replacement does not extend the previous mapping");
 }
 
+static void router_domain(wa_engine *e) {
+    /* Mirrors domain_from_router: reserved ranges, then the LAN. */
+    const char *reserved[]={"0.0.0.0/8","10.0.0.0/8","172.16.0.0/12","192.168.0.0/16","127.0.0.0/8","169.254.0.0/16","224.0.0.0/4","255.255.255.255/32"};
+    memset(&e->domain,0,sizeof e->domain);
+    for(unsigned i=0;i<sizeof reserved/sizeof reserved[0];i++){uint32_t n,m;wa_parse_cidr(reserved[i],&n,&m);wa_domain_add_local(e,n,m);}
+    wa_domain_add_local(e,ip("192.168.1.0"),ip("255.255.255.0"));
+}
+
+static void test_domain_merges_covered_prefixes(void) {
+    static wa_engine e;
+    base_engine(&e,WA_STICKY,NULL);both_up(&e);router_domain(&e);
+    CHECK(e.domain.n_local==8,"LAN inside 192.168.0.0/16 adds no entry");
+    /* Dual-WAN main table shape from the tested router (documentation addresses). */
+    const char *rows[]={"default \n","\tnexthop via 203.0.113.1 dev eth0 weight 2 \n","\tnexthop via 192.168.12.1 dev eth2 weight 1 \n",
+        "1.0.0.1 via 203.0.113.1 dev eth0 metric 1 \n","1.0.0.1 via 192.168.12.1 dev eth2 metric 1 \n",
+        "1.1.1.1 via 203.0.113.1 dev eth0 metric 1 \n","1.1.1.1 via 192.168.12.1 dev eth2 metric 1 \n",
+        "10.6.0.2 dev wgs1 scope link \n","10.6.0.3 dev wgs1 scope link \n",
+        "203.0.113.1 dev eth0 scope link \n","203.0.113.0/24 dev eth0 proto kernel scope link src 203.0.113.174 \n",
+        "127.0.0.0/8 dev lo scope link \n","192.168.1.0/24 dev br0 proto kernel scope link src 192.168.1.1 \n",
+        "192.168.12.0/24 dev eth2 proto kernel scope link src 192.168.12.133 \n","192.168.12.1 dev eth2 scope link \n"};
+    int status=WA_DOMAIN_OK;
+    for(unsigned i=0;i<sizeof rows/sizeof rows[0];i++)status|=wa_policy_add_route(&e,rows[i]);
+    CHECK(status==WA_DOMAIN_OK && e.domain.n_local==11,"duplicate and covered routes consume no capacity");
+    int gateway_route=0;
+    for(int i=0;i<e.domain.n_local;i++)gateway_route|=e.domain.local[i].net==ip("203.0.113.1") && e.domain.local[i].mask==0xffffffffu;
+    CHECK(!gateway_route,"broader WAN subnet replaces its earlier gateway host route");
+    uint32_t src=ip("192.168.1.50");
+    CHECK(!strcmp(wa_admission_decision(&e,1,src,ip("203.0.113.9"),6,40000,443,0,1).reason,"local-or-lan-dest"),"merged subnet still local");
+    CHECK(!strcmp(wa_admission_decision(&e,1,src,ip("1.1.1.1"),17,40001,53,0,2).reason,"local-or-lan-dest"),"per-WAN DNS route still local");
+    CHECK(wa_admission_decision(&e,1,src,ip("1.1.1.2"),6,40002,443,0,3).action==WA_ACT_MARK,"other destinations remain placeable");
+}
+
+static void test_domain_capacity_is_reported_not_truncated(void) {
+    static wa_engine e;
+    base_engine(&e,WA_STICKY,NULL);memset(&e.domain,0,sizeof e.domain);
+    char row[64];int status=WA_DOMAIN_OK;
+    for(int i=0;i<WA_MAX_LOCAL;i++){snprintf(row,sizeof row,"100.64.%d.%d dev wgc1 scope link\n",i/200,1+i%200);status|=wa_policy_add_route(&e,row);}
+    CHECK(status==WA_DOMAIN_OK && e.domain.n_local==WA_MAX_LOCAL,"local table fills to capacity");
+    CHECK(wa_policy_add_route(&e,"100.65.0.1 dev wgc1 scope link\n")==WA_DOMAIN_LOCAL_CAPACITY && e.domain.n_local==WA_MAX_LOCAL,
+          "overflowing route is reported and leaves the table intact");
+    CHECK(wa_policy_add_route(&e,"100.64.0.0/16 dev wgc1 scope link\n")==WA_DOMAIN_OK && e.domain.n_local==1,
+          "a covering prefix replaces the entries it covers even when full");
+    CHECK(!strcmp(wa_domain_status_name(WA_DOMAIN_LOCAL_CAPACITY),"local-capacity"),"status names capacity");
+
+    memset(&e.domain,0,sizeof e.domain);status=WA_DOMAIN_OK;
+    for(int i=0;i<WA_MAX_PINS;i++){snprintf(row,sizeof row,"1000: from 192.168.1.%d lookup ovpnc%d\n",1+i%250,1+i/250);status|=wa_policy_add_rule(&e,row);}
+    CHECK(status==WA_DOMAIN_OK && e.domain.n_pins==WA_MAX_PINS,"policy selectors fill to capacity");
+    CHECK(wa_policy_add_rule(&e,"1000: from 192.168.2.1 lookup ovpnc1\n")==WA_DOMAIN_PIN_CAPACITY && e.domain.n_pins==WA_MAX_PINS,
+          "overflowing selector is reported");
+    CHECK(wa_policy_add_rule(&e,"1001: from 192.168.1.5 lookup wgc1\n")==WA_DOMAIN_OK,"duplicate selector consumes no capacity");
+    CHECK(wa_policy_add_rule(&e,"1002: from all fwmark 0x10000/0xff0000 lookup wgc1\n")==WA_DOMAIN_OK && e.domain.n_pins==1,
+          "full-tunnel exclusion subsumes every narrower selector");
+    CHECK(wa_policy_add_rule(&e,"1000: from all lookup wgc1")==WA_DOMAIN_TRUNCATED_RULE,"truncated rule reported");
+
+    memset(&e.domain,0,sizeof e.domain);
+    char pins[]="<192.168.1.11>all>0<192.168.1.11>all>0<192.168.1.0/24>203.0.113.0/24>1<bad>all>0<192.168.1.12>all>1";
+    CHECK(wa_policy_add_gui_pins(&e,pins)==WA_DOMAIN_UNSUPPORTED_PIN && e.domain.n_pins==3,
+          "unsupported GUI pin is reported while valid pins remain excluded");
+}
+
+static void test_view_keeps_only_placeable_rows(void) {
+    static wa_engine e;static wa_ct_view view;
+    base_engine(&e,WA_STICKY,NULL);router_domain(&e);
+    wa_domain_add_pin(&e,ip("192.168.1.70"),0xffffffffu,0,0);
+    memset(&view,0,sizeof view);
+    wa_ct_record row;memset(&row,0,sizeof row);
+    row.proto=17;row.src=ip("192.168.1.50");row.dst=ip("192.168.1.1");row.sport=50000;row.dport=53;
+    CHECK(wa_ct_view_add_relevant(&view,&e,&row)==1 && !view.count,"DNS to the router uses no view capacity");
+    row.src=ip("192.168.1.70");row.dst=ip("198.51.100.7");row.proto=6;row.dport=443;
+    CHECK(wa_ct_view_add_relevant(&view,&e,&row)==1 && !view.count,"pinned source uses no view capacity");
+    row.src=ip("192.168.1.50");
+    for(int i=0;i<WA_MAX_STATES+10;i++){row.sport=(uint32_t)(1024+i%60000);row.dst=ip("198.51.100.0")+(uint32_t)(i/60000);wa_ct_view_add_relevant(&view,&e,&row);}
+    CHECK(view.count==WA_MAX_STATES && view.overflow==10,"placeable rows beyond capacity are counted, not fatal");
+}
+
 int main(void) {
+    test_domain_merges_covered_prefixes();
+    test_domain_capacity_is_reported_not_truncated();
+    test_view_keeps_only_placeable_rows();
     test_mixed_mapping_lifetime_and_restart();
     test_confirmed_identity_reuse_is_not_mapping_membership();
     test_policy_exclusions();

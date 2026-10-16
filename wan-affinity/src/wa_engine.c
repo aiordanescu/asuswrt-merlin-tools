@@ -94,12 +94,26 @@ void wa_domain_set_lan(wa_engine *e, uint32_t net, uint32_t mask) {
     e->lan.mask = mask;
 }
 
-void wa_domain_add_local(wa_engine *e, uint32_t net, uint32_t mask) {
-    if (e->domain.n_local < (int)(sizeof e->domain.local / sizeof e->domain.local[0])) {
-        e->domain.local[e->domain.n_local].net = net & mask;
-        e->domain.local[e->domain.n_local].mask = mask;
-        e->domain.n_local++;
+static int prefix_covers(uint32_t net, uint32_t mask, uint32_t inner_net, uint32_t inner_mask) {
+    return (inner_mask & mask) == mask && (inner_net & mask) == net;
+}
+
+int wa_domain_add_local(wa_engine *e, uint32_t net, uint32_t mask) {
+    wa_domain *d = &e->domain;
+    int covered = 0;
+    net &= mask;
+    for (int i = 0; i < d->n_local; i++) {
+        if (prefix_covers(d->local[i].net, d->local[i].mask, net, mask)) return 0;
+        covered += prefix_covers(net, mask, d->local[i].net, d->local[i].mask);
     }
+    if (d->n_local - covered >= WA_MAX_LOCAL) return -1;
+    int kept = 0;
+    for (int i = 0; i < d->n_local; i++)
+        if (!prefix_covers(net, mask, d->local[i].net, d->local[i].mask)) d->local[kept++] = d->local[i];
+    d->local[kept].net = net;
+    d->local[kept].mask = mask;
+    d->n_local = kept + 1;
+    return 1;
 }
 
 void wa_domain_add_vpn(wa_engine *e, uint32_t net, uint32_t mask) {
@@ -110,14 +124,35 @@ void wa_domain_add_vpn(wa_engine *e, uint32_t net, uint32_t mask) {
     }
 }
 
-void wa_domain_add_pin(wa_engine *e, uint32_t src, uint32_t smask, uint32_t dst, uint32_t dmask) {
-    if (e->domain.n_pins < WA_MAX_PINS) {
-        int i = e->domain.n_pins++;
-        e->domain.pins[i].src = src & smask;
-        e->domain.pins[i].smask = smask;
-        e->domain.pins[i].dst = dst & dmask;
-        e->domain.pins[i].dmask = dmask;
+static int pin_covers(const wa_domain *d, int i, uint32_t src, uint32_t smask, uint32_t dst, uint32_t dmask) {
+    return prefix_covers(d->pins[i].src, d->pins[i].smask, src, smask) &&
+           prefix_covers(d->pins[i].dst, d->pins[i].dmask, dst, dmask);
+}
+
+static int pin_covered_by(const wa_domain *d, int i, uint32_t src, uint32_t smask, uint32_t dst, uint32_t dmask) {
+    return prefix_covers(src, smask, d->pins[i].src, d->pins[i].smask) &&
+           prefix_covers(dst, dmask, d->pins[i].dst, d->pins[i].dmask);
+}
+
+int wa_domain_add_pin(wa_engine *e, uint32_t src, uint32_t smask, uint32_t dst, uint32_t dmask) {
+    wa_domain *d = &e->domain;
+    int covered = 0;
+    src &= smask;
+    dst &= dmask;
+    for (int i = 0; i < d->n_pins; i++) {
+        if (pin_covers(d, i, src, smask, dst, dmask)) return 0;
+        covered += pin_covered_by(d, i, src, smask, dst, dmask);
     }
+    if (d->n_pins - covered >= WA_MAX_PINS) return -1;
+    int kept = 0;
+    for (int i = 0; i < d->n_pins; i++)
+        if (!pin_covered_by(d, i, src, smask, dst, dmask)) d->pins[kept++] = d->pins[i];
+    d->pins[kept].src = src;
+    d->pins[kept].smask = smask;
+    d->pins[kept].dst = dst;
+    d->pins[kept].dmask = dmask;
+    d->n_pins = kept + 1;
+    return 1;
 }
 
 void wa_engine_init(wa_engine *e, wa_mode mode, int w0, int w1,

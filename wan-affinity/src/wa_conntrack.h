@@ -16,6 +16,12 @@ typedef struct {
     wa_ct_record rows[WA_MAX_STATES];
     int slots[WA_MAX_STATES*2];
     int count;
+    int overflow;   /* rows that did not fit; nonzero means the view is partial */
 } wa_ct_view;
+/* 0: recorded or merged; -1: view full (counted in overflow). */
 int wa_ct_view_add(wa_ct_view *view,const wa_ct_record *row);
+/* Records only rows the engine can place (wa_state_relevant under e's domain):
+ * DNS to the router, LAN, local, pinned and VPN traffic never consume capacity.
+ * 1: outside placement scope; otherwise as wa_ct_view_add. */
+int wa_ct_view_add_relevant(wa_ct_view *view,const wa_engine *e,const wa_ct_record *row);
 #endif

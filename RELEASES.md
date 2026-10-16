@@ -1,14 +1,14 @@
 # Prebuilt WAN tools
 
-[WAN tools — 2026-10-15 beta](https://github.com/aiordanescu/asuswrt-merlin-tools/releases/tag/wan-tools-2026.10.15-beta.6)
+[WAN tools — 2026-10-15 beta](https://github.com/aiordanescu/asuswrt-merlin-tools/releases/tag/wan-tools-2026.10.15-beta.7)
 provides static **aarch64 Linux** bundles. No compiler, Python or Entware is
 needed on the router. Tested target: RT-AX88U, Asuswrt-Merlin 3004.388.12_2,
 Linux 4.1.51. This is not a build for 32-bit ARM, MIPS or every Merlin model.
 
 | Download | Included production binaries | Installation |
 | --- | --- | --- |
-| [wan-affinity-aarch64.tar.gz](https://github.com/aiordanescu/asuswrt-merlin-tools/releases/download/wan-tools-2026.10.15-beta.6/wan-affinity-aarch64.tar.gz) | `wan-affinity` (0.4.3), controller, installer, disabled example, rollback and guides | [Affinity instructions](wan-affinity/README.md#download-and-install) |
-| [wan-watchdog-aarch64.tar.gz](https://github.com/aiordanescu/asuswrt-merlin-tools/releases/download/wan-tools-2026.10.15-beta.6/wan-watchdog-aarch64.tar.gz) | `wan-watchdog`, `wan-healthctl`, shell actuator/reference, installer and rollback | [WAN Watchdog instructions](wan-watchdog/GUIDE.md#download-and-qualification) |
+| [wan-affinity-aarch64.tar.gz](https://github.com/aiordanescu/asuswrt-merlin-tools/releases/download/wan-tools-2026.10.15-beta.7/wan-affinity-aarch64.tar.gz) | `wan-affinity` (0.4.4), controller, installer, disabled example, rollback and guides | [Affinity instructions](wan-affinity/README.md#download-and-install) |
+| [wan-watchdog-aarch64.tar.gz](https://github.com/aiordanescu/asuswrt-merlin-tools/releases/download/wan-tools-2026.10.15-beta.7/wan-watchdog-aarch64.tar.gz) | `wan-watchdog`, `wan-healthctl`, shell actuator/reference, installer and rollback | [WAN Watchdog instructions](wan-watchdog/GUIDE.md#download-and-qualification) |
 
 The components remain independently installed and operated. The shell watchdog
 and Namecheap DDNS helper do not need compilation. Test executables and fixture
@@ -42,6 +42,29 @@ monitoring on both WANs and no active override. Use `--install` for handoff from
 reviewed shell reference or `--upgrade` for an installed monitor; its supported
 settings are saved in private `service.conf` and retained through recovery.
 
+## Changes in beta.7
+
+WAN Affinity 0.4.4 removes two capacity limits that could stop placement for
+the whole LAN. WAN Watchdog is unchanged from beta.6.
+
+- **Routing domain.** Main-table routes, GUI pins and policy exclusions
+  covered by a broader entry are merged, and the limits rise to 64 local
+  prefixes and 128 policy selectors. The tested router previously used 12 of
+  15 route slots; the same routes now use 11 of 64 prefixes. Exceeding a limit
+  used to make every refresh fail and could stop the helper from starting. Now
+  the helper keeps running and pauses placement until the domain fits. New
+  connections use firmware balancing, and status reports why.
+- **Connection view.** Only connections the helper could place count toward
+  4,096. DNS to the router and LAN traffic no longer do. Above the limit, WAN
+  facts keep refreshing so failover stays current, and mappings are kept rather
+  than expired. Previously one connection too many rejected every refresh and
+  left health stale.
+
+A new `capacity` line in `/tmp/wan-affinity/status` shows the counts and
+limits. See the
+[maintenance notes](MAINTENANCE-2026-10-15.md#affinity-044-in-beta7-capacity-limits)
+and the affinity README's status and limits section.
+
 ## Changes in beta.6
 
 Beta.6 fixes two watchdog lifecycle issues found after beta.5. Both affect only
@@ -56,7 +79,7 @@ Upgrades and affinity behavior are not affected.
   `service.conf` exists. Beta.5 could reuse a file left by an earlier rollback
   and restore an old mode or priority.
 
-The executables (`wan-affinity`, `wan-watchdog`, `wan-healthctl`) are
+Beta.6's executables (`wan-affinity`, `wan-watchdog`, `wan-healthctl`) were
 byte-identical to beta.5. Only the watchdog installer, its service library and
 documentation changed. `--upgrade` from an installed beta.5 monitor installs the
 corrected rollback tools. See the
@@ -69,25 +92,24 @@ run that rollback again; each run restarts the healthy shell.
 
 ## Verification for this release
 
-The changed lifecycle scripts pass 82 watchdog shell/DDNS/lifecycle tests on
-the host, including new tests against the shell's real status output, a
-first-install rollback, and both settings-capture sources. They have not been
-run on the router. All host suites pass on the tagged source: Affinity 107
-Python tests, 270 engine/checkpoint C checks (also under ASan/UBSan) and 21
-worker C checks; watchdog 434 core/codec C checks and 11 adapter/parity tests.
-The executables are the beta.5 files, whose code and data sections match a
-clean Zig 0.15.2 rebuild of this source.
+Affinity 0.4.4 passes 289 engine/checkpoint C checks (also under ASan/UBSan),
+21 worker C checks and 107 Python tests on the tagged source. On the tested
+router, with the production service running, the new helper passed the loopback
+lifecycle regression and the mixed-session adoption matrix in both modes with
+real HTTPS connections. It read the router's real routes, rules and pins and
+reported `domain=ok local_prefixes=11/64 policy_selectors=20/128`. The packaged
+helper then replaced the production service through `install.sh --upgrade`. It
+restarted with its mappings restored and both WANs eligible, and firewall
+rules, policy rules and hooks were unchanged. The over-capacity paths are
+host-tested only.
 
-The beta.5 router qualification covers the same executables. See the
+The watchdog executables are byte-identical to beta.5 and its scripts to
+beta.6. They pass 82 shell/DDNS/lifecycle tests, 11 adapter/parity tests and
+434 core/codec C checks. See the
 [maintenance qualification and review disposition](MAINTENANCE-2026-10-15.md)
-for lifecycle fixes, lease-bound routing decisions, slow-worker tests and the
-corrected kernel queue fallback guarantee.
-
-For beta.5, private router tests exercised the actual monitor with loopback
-probes and file-only routing adapters, plus kernel queue traversal without
-stopping the production helper. Guarded production updates and LAN-bound client
-checks used the same executables packaged in this release. Build metadata and
-the validation run for this release are recorded in `BUILD-INFO.json`.
+for the beta.5 router qualification, lease-bound routing decisions, slow-worker
+tests and the corrected kernel queue fallback guarantee. Build metadata and the
+validation run for this release are recorded in `BUILD-INFO.json`.
 
 The adoption update's prior mixed-session and sustained-throughput evidence is
 retained in the component documentation. Testing remains scoped to the listed

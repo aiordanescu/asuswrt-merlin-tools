@@ -33,4 +33,57 @@ static int wa_policy_exclusion(const char *row, uint32_t *s, uint32_t *sm,
        (strcmp(to,"all") && wa_parse_cidr(to,d,dm))) *s=*sm=*d=*dm=0;
     return 1;
 }
+
+/* A domain that cannot be represented exactly could mark local or
+ * policy-routed traffic toward a WAN, so the helper then pauses placement. */
+enum { WA_DOMAIN_OK=0, WA_DOMAIN_LOCAL_CAPACITY, WA_DOMAIN_PIN_CAPACITY,
+       WA_DOMAIN_UNSUPPORTED_PIN, WA_DOMAIN_TRUNCATED_RULE };
+
+static const char *wa_domain_status_name(int status) {
+    switch(status) {
+    case WA_DOMAIN_OK: return "ok";
+    case WA_DOMAIN_LOCAL_CAPACITY: return "local-capacity";
+    case WA_DOMAIN_PIN_CAPACITY: return "pin-capacity";
+    case WA_DOMAIN_UNSUPPORTED_PIN: return "unsupported-pin";
+    default: return "truncated-rule";
+    }
+}
+
+/* Firmware GUI pins from nvram wans_routing_rulelist: <src>dst>unit... The list
+ * is modified in place. Returns a WA_DOMAIN_* status for the first problem. */
+static int wa_policy_add_gui_pins(wa_engine *e, char *list) {
+    int status=WA_DOMAIN_OK;
+    for(char *tok=strtok(list,"<");tok;tok=strtok(NULL,"<")) {
+        char *gt=strchr(tok,'>');
+        if(!gt)continue;
+        *gt=0;
+        char *destination=gt+1,*end=strchr(destination,'>');
+        if(end)*end=0;
+        uint32_t s=0,sm=0,d=0,dm=0;
+        int bad=0;
+        if(*tok && strcmp(tok,"all"))bad=wa_parse_cidr(tok,&s,&sm);
+        if(*destination && strcmp(destination,"all"))bad|=wa_parse_cidr(destination,&d,&dm);
+        if(bad){if(!status)status=WA_DOMAIN_UNSUPPORTED_PIN;continue;}
+        if(wa_domain_add_pin(e,s,sm,d,dm)<0 && !status)status=WA_DOMAIN_PIN_CAPACITY;
+    }
+    return status;
+}
+
+/* One `ip -4 route show table main` row. Non-prefix rows (default, nexthop
+ * continuations) are not destinations and are ignored. */
+static int wa_policy_add_route(wa_engine *e, const char *row) {
+    char cidr[64];uint32_t n,mask;
+    if(sscanf(row,"%63s",cidr)!=1 || !strcmp(cidr,"default"))return WA_DOMAIN_OK;
+    if(wa_parse_cidr(cidr,&n,&mask) || !mask)return WA_DOMAIN_OK;
+    return wa_domain_add_local(e,n,mask)<0?WA_DOMAIN_LOCAL_CAPACITY:WA_DOMAIN_OK;
+}
+
+/* One `ip -4 rule show` row: unfamiliar tables become exclusions. */
+static int wa_policy_add_rule(wa_engine *e, const char *row) {
+    uint32_t s=0,sm=0,d=0,dm=0;
+    int excluded=wa_policy_exclusion(row,&s,&sm,&d,&dm);
+    if(excluded<0)return WA_DOMAIN_TRUNCATED_RULE;
+    if(!excluded)return WA_DOMAIN_OK;
+    return wa_domain_add_pin(e,s,sm,d,dm)<0?WA_DOMAIN_PIN_CAPACITY:WA_DOMAIN_OK;
+}
 #endif

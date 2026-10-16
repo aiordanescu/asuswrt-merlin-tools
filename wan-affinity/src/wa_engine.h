@@ -25,7 +25,8 @@
 #define WA_MAX_ASSOC 1024
 #define WA_MAX_STATES 4096
 #define WA_MAX_CIDR 8
-#define WA_MAX_PINS 64
+#define WA_MAX_LOCAL 64   /* reserved ranges + LAN + main-table prefixes, merged */
+#define WA_MAX_PINS 128   /* GUI pins + policy-rule selectors, merged */
 #define WA_DUMP_HEADER "#wan-affinity-conntrack v1 count="
 #define WA_DUMP_END "--end--"
 #define WA_ERR_LEN 48
@@ -101,7 +102,7 @@ typedef struct {
 } wa_cidr;
 
 typedef struct {
-    wa_cidr local[WA_MAX_CIDR * 3];
+    wa_cidr local[WA_MAX_LOCAL];
     int n_local;
     wa_cidr vpn[WA_MAX_CIDR];
     int n_vpn;
@@ -150,9 +151,13 @@ void wa_engine_init(wa_engine *e, wa_mode mode, int w0, int w1,
                     double provisional_warning_seconds,
                     const char *affinity_seed, unsigned long long rng_seed);
 void wa_domain_set_lan(wa_engine *e, uint32_t net, uint32_t mask);
-void wa_domain_add_local(wa_engine *e, uint32_t net, uint32_t mask);
+/* Local and pin lists are membership tests, so a prefix already covered by a
+ * broader entry adds nothing; a broader entry replaces those it covers.
+ * Returns 1 when added, 0 when already covered, -1 when the list is full (the
+ * list is then unchanged and the caller must not trust the domain). */
+int wa_domain_add_local(wa_engine *e, uint32_t net, uint32_t mask);
 void wa_domain_add_vpn(wa_engine *e, uint32_t net, uint32_t mask);
-void wa_domain_add_pin(wa_engine *e, uint32_t src, uint32_t smask, uint32_t dst, uint32_t dmask);
+int wa_domain_add_pin(wa_engine *e, uint32_t src, uint32_t smask, uint32_t dst, uint32_t dmask);
 
 void wa_health_set_firmware(wa_engine *e, int unit, const wa_wan_facts *f);
 int wa_health_apply_snapshot(wa_engine *e, const char *text, double now);
