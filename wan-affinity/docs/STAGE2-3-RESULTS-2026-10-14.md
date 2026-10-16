@@ -6,7 +6,7 @@
 > qualification gates remain. The earlier findings are preserved as history.
 
 Date: 2026-10-14. Target: RT-AX88U, Asuswrt-Merlin `3004.388.12_2`,
-Linux `4.1.51`, aarch64. Both WANs use DHCP; native mode remained Load Balance.
+Linux `4.1.51`, aarch64. Both WANs use DHCP; firmware mode remained Load Balance.
 
 ## Decision
 
@@ -69,7 +69,7 @@ private backup, not in this public directory.
   compiler warnings treated as errors. Fixed missing network declarations and
   the first-build warning failure.
 - Repaired the controller: actually build the chain; recognize the first queue
-  status column; insert before native balance; remove the exact selector rule;
+  status column; insert before firmware balance; remove the exact selector rule;
   prove ownership; preserve foreign chains; clean up after partial startup;
   verify the helper's process identity; refuse the management source/CIDRs;
   and remove stale readiness files before starting.
@@ -85,19 +85,19 @@ private backup, not in this public directory.
   bypass was observed after the crash; the subsequent forwarding matrix used
   the corrected build.
 - Corrected snapshot freshness to use publication time, not reread time;
-  validate publisher boot identity; retain exclusions; respect native route
+  validate publisher boot identity; retain exclusions; respect firmware route
   readiness and explicit recovery eligibility.
-- Added strict native conntrack parsing, actual source/destination-port
+- Added strict firmware conntrack parsing, actual source/destination-port
   preservation, dump truncation/error rejection, pending-state capacity checks,
   and conservative retention when a current reconcile is invalid.
 - Corrected restart egress attribution: GUI source pins outrank WAN marks, so
-  an old connection can have a misleading native mark. A confirmed SNAT reply
+  an old connection can have a misleading firmware mark. A confirmed SNAT reply
   address matching a current WAN address takes precedence when reconstructing
   its actual egress.
 
 The original lifecycle mock accepted a partial rule deletion that real iptables
 would reject. It now requires an exact match and exercises successful startup,
-rollback after insertion failure, native rule ordering and foreign ownership.
+rollback after insertion failure, firmware rule ordering and foreign ownership.
 
 ## Firmware compatibility finding
 
@@ -108,7 +108,7 @@ The live kernel reports:
 ```
 
 Setting the NFQUEUE conntrack flag succeeds but queued packet messages omit
-`NFQA_CT`/`CTA_ID`. Native `conntrack -L -o extended,id` still provides IDs.
+`NFQA_CT`/`CTA_ID`. Firmware `conntrack -L -o extended,id` still provides IDs.
 
 The adapter now assigns local tokens using exact original five-tuple equality
 (protocol, both IPv4 addresses and both ports), rather than a 32-bit hash or an
@@ -132,13 +132,13 @@ establish the behavior of this installed vendor kernel.
    cause is a connection completing or being rejected before the next periodic
    dump; its exact terminal path has not yet been proved. Retention prevents
    unsafe expiry but can prevent full-idle cleanup and accumulate state. At the
-   configured capacity, new untracked admissions pass to native routing; source
+   configured capacity, new untracked admissions pass to firmware routing; source
    stickiness is then no longer guaranteed. A timer is not a valid fix: the
    earlier kernel test proved that an unconfirmed packet may still be queued.
    Resolve this with a tested release/terminal-evidence mechanism before wider
    use. Current regression coverage protects retention, not eventual cleanup.
 2. **Admission latency and throughput.** The helper's resident memory was about
-   488 KiB. Periodic native-fact/dump refresh reached 92.73 ms; the largest
+   488 KiB. Periodic firmware-fact/dump refresh reached 92.73 ms; the largest
    observed kernel-packet-timestamp-to-helper-read delay was 73.159 ms. These
    refreshes currently block the admission loop. This is a limited scoped
    sample, not a throughput/offload qualification or a pure queue-delay
@@ -148,7 +148,7 @@ establish the behavior of this installed vendor kernel.
    execution, full uninstall packaging, live mode changes and helper-restart
    recovery during enhanced-health disappearance still need qualification.
    The watchdog snapshot publisher was not installed; production operation in
-   these tests was native readiness plus private fixtures only.
+   these tests was firmware readiness plus private fixtures only.
 4. **Policy matrix.** Simple live GUI pins were verified. Complex subnet/
    destination pins, live pin edits/removal, public VPN policy destinations,
    inbound replies and non-DHCP WAN variants need their own controlled checks.

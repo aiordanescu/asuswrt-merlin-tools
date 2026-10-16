@@ -14,7 +14,7 @@ without installing or enabling anything on the live router.
 ## Delivered
 
 * `src/wa_engine.{h,c}` - the decision engine, no Linux dependency. Serialized
-  admission, sticky/affinity selection with live weights, native + optional
+  admission, sticky/affinity selection with live weights, firmware + optional
   snapshot health, provisional-admission retention, framed validated
   reconciliation, event handling, restart reconstruction, bounded status.
 * `src/wan_affinity.c` - the platform adapter: NFQUEUE netlink bind/verdict,
@@ -58,7 +58,7 @@ python3 -m compileall wan_affinity tests -> OK
 ## Design points carried from the router report
 
 * `NF_REPEAT`, not `NF_ACCEPT`, for both mark and pass verdicts; the `0x40`
-  sentinel is cleared on re-entry and the native `balance` rule then runs.
+  sentinel is cleared on re-entry and the firmware `balance` rule then runs.
 * Provisional (queued/unconfirmed) admissions are never expired by time alone;
   they clear only when a validated dump confirms the connection, and their
   absence is reported as visible uncertainty.

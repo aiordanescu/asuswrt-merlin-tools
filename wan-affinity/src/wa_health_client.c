@@ -4,8 +4,8 @@
 #include <stdio.h>
 #include <string.h>
 #include <unistd.h>
-void wa_health_merge_native(wa_engine *e, const wa_health *collected) {
-    memcpy(e->health.native, collected->native, sizeof e->health.native);
+void wa_health_merge_firmware(wa_engine *e, const wa_health *collected) {
+    memcpy(e->health.firmware, collected->firmware, sizeof e->health.firmware);
 }
 static void save(wa_health_feed *f, const wa_health *health) {
     wh_state checkpoint = f->client.state;
@@ -37,12 +37,12 @@ void wa_health_feed_init(wa_health_feed *f, wa_engine *e, enum wa_health_source 
     f->source = source;
     f->checkpoint_mask = -1;
     wh_client_init(&f->client,
-                   source == WA_HEALTH_NATIVE || source == WA_HEALTH_LEGACY ? "" : socket_path);
+                   source == WA_HEALTH_FIRMWARE || source == WA_HEALTH_LEGACY ? "" : socket_path);
     snprintf(f->checkpoint, sizeof f->checkpoint, "%s/health.cache", runtime);
-    e->health.native_policy = source == WA_HEALTH_NATIVE;
-    if (source == WA_HEALTH_SOCKET)
+    e->health.firmware_policy = source == WA_HEALTH_FIRMWARE;
+    if (source == WA_HEALTH_WATCHDOG)
         e->health.excluded[0] = e->health.excluded[1] = 1;
-    if (source == WA_HEALTH_NATIVE || source == WA_HEALTH_LEGACY)
+    if (source == WA_HEALTH_FIRMWARE || source == WA_HEALTH_LEGACY)
         return;
     FILE *in = fopen(f->checkpoint, "r");
     if (!in)
@@ -57,10 +57,10 @@ void wa_health_feed_init(wa_health_feed *f, wa_engine *e, enum wa_health_source 
     f->client.seen = 1;
     f->client.state = s;
     for (int u = 0; u < 2; u++)
-        e->health.excluded[u] = source == WA_HEALTH_SOCKET ? 1 : (int)s.wan[u].excluded;
+        e->health.excluded[u] = source == WA_HEALTH_WATCHDOG ? 1 : (int)s.wan[u].excluded;
 }
 int wa_health_feed_step(wa_health_feed *f, wa_engine *e, uint64_t now) {
-    if (f->source == WA_HEALTH_NATIVE || f->source == WA_HEALTH_LEGACY)
+    if (f->source == WA_HEALTH_FIRMWARE || f->source == WA_HEALTH_LEGACY)
         return 0;
     int rc = wh_client_step(&f->client, now);
     wa_health *h = &e->health;
@@ -75,20 +75,20 @@ int wa_health_feed_step(wa_health_feed *f, wa_engine *e, uint64_t now) {
             uint32_t ip = 0;
             int recent =
                 w->measured_ns && now >= w->measured_ns && now - w->measured_ns <= WH_MAX_AGE_NS;
-            int same_native = inet_pton(AF_INET, h->native[u].ip, &ip) == 1 && ip == w->ip &&
-                              !strcmp(h->native[u].ifname, w->ifname);
-            h->snap.state[u] = recent && same_native && w->bad        ? WA_UNUSABLE
-                               : recent && same_native && w->eligible ? WA_ELIGIBLE
+            int same_firmware = inet_pton(AF_INET, h->firmware[u].ip, &ip) == 1 && ip == w->ip &&
+                              !strcmp(h->firmware[u].ifname, w->ifname);
+            h->snap.state[u] = recent && same_firmware && w->bad        ? WA_UNUSABLE
+                               : recent && same_firmware && w->eligible ? WA_ELIGIBLE
                                                                       : WA_UNKNOWN;
-            h->snap.eligible[u] = w->eligible && recent && same_native;
+            h->snap.eligible[u] = w->eligible && recent && same_firmware;
             h->snap.recovered[u] = w->recovered;
-            if (recent && same_native)
+            if (recent && same_firmware)
                 h->excluded[u] = !w->eligible;
         }
         save(f, h);
     } else {
         h->have_snap = h->enhanced = 0;
-        if (f->source == WA_HEALTH_SOCKET)
+        if (f->source == WA_HEALTH_WATCHDOG)
             h->excluded[0] = h->excluded[1] = 1;
     }
     return rc;

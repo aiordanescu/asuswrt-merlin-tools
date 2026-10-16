@@ -108,7 +108,7 @@ def derive_seed(machine_id: str, salt: str = "") -> str:
 
 
 def parse_ratio(value: str) -> Tuple[int, int]:
-    """Parse the native ``wans_lb_ratio`` (e.g. ``2:1``) into weights."""
+    """Parse the firmware ``wans_lb_ratio`` (e.g. ``2:1``) into weights."""
     try:
         left, right = value.split(":", 1)
         a, b = int(left), int(right)

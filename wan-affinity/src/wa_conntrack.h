@@ -9,7 +9,7 @@ typedef struct {
     int unconfirmed;
 } wa_ct_record;
 /* 1: complete supported row; 0: other protocol; -1: malformed/unsupported zone. */
-int wa_parse_native_conntrack(const char *line,wa_ct_record *out);
+int wa_parse_firmware_conntrack(const char *line,wa_ct_record *out);
 int wa_parse_unconfirmed_conntrack(const char *line,wa_ct_record *out);
 int wa_ct_egress(const wa_ct_record *row,const wa_health *health);
 typedef struct {

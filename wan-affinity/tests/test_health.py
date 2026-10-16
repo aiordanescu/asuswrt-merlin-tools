@@ -7,7 +7,7 @@ from wan_affinity.health import (
     UNUSABLE,
     HealthView,
     WanFacts,
-    native_eligibility,
+    firmware_eligibility,
     parse_snapshot,
 )
 
@@ -45,34 +45,34 @@ def snap_text(**overrides):
     )
 
 
-class NativeHealthTests(unittest.TestCase):
+class FirmwareHealthTests(unittest.TestCase):
     def test_ready_is_eligible(self):
         facts = WanFacts(enable=1, state_t=2, ipaddr="203.0.113.2", gateway="203.0.113.1",
                          ifname="eth0", route_ready=True)
-        self.assertEqual(native_eligibility(facts), ELIGIBLE)
+        self.assertEqual(firmware_eligibility(facts), ELIGIBLE)
 
     def test_disabled_is_unusable(self):
         facts = WanFacts(enable=0, state_t=2, ipaddr="203.0.113.2", gateway="203.0.113.1",
                          ifname="eth0", route_ready=True)
-        self.assertEqual(native_eligibility(facts), UNUSABLE)
+        self.assertEqual(firmware_eligibility(facts), UNUSABLE)
 
     def test_not_connected_is_unusable(self):
         facts = WanFacts(enable=1, state_t=3, ipaddr="203.0.113.2", gateway="203.0.113.1",
                          ifname="eth0", route_ready=True)
-        self.assertEqual(native_eligibility(facts), UNUSABLE)
+        self.assertEqual(firmware_eligibility(facts), UNUSABLE)
 
     def test_no_lease_is_unusable(self):
         facts = WanFacts(enable=1, state_t=2, ipaddr="0.0.0.0", gateway="203.0.113.1",
                          ifname="eth0", route_ready=True)
-        self.assertEqual(native_eligibility(facts), UNUSABLE)
+        self.assertEqual(firmware_eligibility(facts), UNUSABLE)
 
     def test_unknown_route_readiness_is_unknown(self):
         facts = WanFacts(enable=1, state_t=2, ipaddr="203.0.113.2", gateway="203.0.113.1",
                          ifname="eth0", route_ready=None)
-        self.assertEqual(native_eligibility(facts), UNKNOWN)
+        self.assertEqual(firmware_eligibility(facts), UNKNOWN)
 
     def test_missing_facts_is_unknown(self):
-        self.assertEqual(native_eligibility(None), UNKNOWN)
+        self.assertEqual(firmware_eligibility(None), UNKNOWN)
 
 
 class SnapshotTests(unittest.TestCase):
@@ -117,8 +117,8 @@ class SnapshotTests(unittest.TestCase):
         view.refresh(100.0)
         self.assertFalse(view.enhanced_available)
         self.assertEqual(view.eligibility(0), UNKNOWN)   # absence is not recovery
-        self.assertEqual(view.eligibility(1), ELIGIBLE)  # native covers the rest
-        view.switch_to_native_policy()
+        self.assertEqual(view.eligibility(1), ELIGIBLE)  # firmware covers the rest
+        view.switch_to_firmware_policy()
         self.assertEqual(view.eligibility(0), ELIGIBLE)  # explicit operator switch
 
     def test_stale_snapshot_falls_back_but_keeps_exclusion(self):
@@ -175,7 +175,7 @@ class EngineHealthTests(unittest.TestCase):
         self.assertTrue(engine.uncertain)
         self.assertEqual(engine.assoc, {})
 
-    def test_failover_with_no_alternative_passes(self):
+    def test_failover_with_no_other_wan_passes(self):
         facts = ok_facts()
         facts[1] = WanFacts(enable=1, state_t=3, ipaddr="198.51.100.2",
                             gateway="198.51.100.1", ifname="eth2", route_ready=True)

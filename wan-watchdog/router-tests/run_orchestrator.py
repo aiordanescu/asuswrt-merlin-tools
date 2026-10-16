@@ -1,5 +1,5 @@
 #!/usr/bin/env python3
-"""Real-clock native daemon/ICMP tests with a FILE-ONLY routing actuator.
+"""Real-clock monitor daemon/ICMP tests with a FILE-ONLY routing actuator.
 
 All probe sources/targets are loopback; the actuator never invokes ip/nvram.
 The production router service and rules remain untouched.
@@ -26,7 +26,7 @@ def main():
     root='/tmp/ww-orch-'+datetime.datetime.now().strftime('%H%M%S')+('-rev' if a.reversal else '-'+a.mode)
     source=Path(__file__).resolve().parents[1]
     ssh('umask 077; mkdir '+root+'; mkdir '+root+'/run '+root+'/owner; touch '+root+'/legacy; echo 1 >'+root+'/enable0; echo 1 >'+root+'/enable1')
-    for local,target in [(source/'build/wan-watchdog-native','native'),(source/'build/wan-healthctl','healthctl')]:
+    for local,target in [(source/'build/wan-watchdog','monitor'),(source/'build/wan-healthctl','healthctl')]:
         with local.open('rb') as data:subprocess.run(['ssh',*MUX,'router','cat >'+root+'/'+target],stdin=data,check=True)
     script='''#!/bin/sh
 set -u
@@ -64,9 +64,9 @@ done
 printf 'END\n'
 '''.replace('ROOT',root)
     ssh('cat >'+root+'/adapter',script)
-    ssh('chmod 700 '+root+'/native '+root+'/healthctl; sh -n '+root+'/adapter')
+    ssh('chmod 700 '+root+'/monitor '+root+'/healthctl; sh -n '+root+'/adapter')
     prod=ssh('cat /tmp/wan-watchdog/wan-watchdog.pid')
-    ssh(f'nohup {root}/native --active --run-dir {root}/run --ownership {root}/owner --adapter {root}/adapter --legacy {root}/legacy --mode {a.mode} --duration 360 </dev/null >{root}/native.log 2>&1 &')
+    ssh(f'nohup {root}/monitor --active --run-dir {root}/run --ownership {root}/owner --adapter {root}/adapter --legacy {root}/legacy --mode {a.mode} --duration 360 </dev/null >{root}/monitor.log 2>&1 &')
     results={};start=time.monotonic()
     def state():return json.loads(ssh(root+'/healthctl --socket '+root+'/run/health.sock --count 1 --timeout 4'))
     def wait(name,predicate,timeout):
@@ -107,13 +107,13 @@ printf 'END\n'
             wait('worker_recovered',lambda s:all(w['eligible'] for w in s['wan']) and not s['routing_error'],45)
         assert prod==ssh('cat /tmp/wan-watchdog/wan-watchdog.pid')
     finally:
-        for name in ['run/status','native.log']:
+        for name in ['run/status','monitor.log']:
             try:(a.evidence/name.replace('/','-')).write_text(ssh('cat '+root+'/'+name))
             except Exception:pass
         ssh(f'''if [ -r {root}/run/wan-watchdog.pid ];then
 read p <{root}/run/wan-watchdog.pid
 first=$(tr '\\000' '\\n' </proc/$p/cmdline 2>/dev/null | head -n1)
-[ "$first" != {root}/native ] || kill -TERM "$p"
+[ "$first" != {root}/monitor ] || kill -TERM "$p"
 fi''')
         time.sleep(.5);ssh('rm -rf '+root)
 

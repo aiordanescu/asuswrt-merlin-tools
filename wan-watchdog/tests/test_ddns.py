@@ -1,4 +1,4 @@
-"""DDNS Auto decisions and native postconf/update boundaries; all effects mocked."""
+"""DDNS Auto decisions and firmware postconf/update boundaries; all effects mocked."""
 import os
 from pathlib import Path
 import shlex
@@ -90,7 +90,7 @@ assert_eq "$([ -f "$STATE_DIR/requests" ] && echo yes || echo no)" no
 assert_eq "$([ -f "$OWNERSHIP_DIR/ddns-auto-unit" ] && echo yes || echo no)" no
 ''')
 
-    def test_ui_auto_to_fixed_withdraws_override_and_retries_native(self):
+    def test_ui_auto_to_fixed_withdraws_override_and_retries_firmware(self):
         self.run_case('''
 echo 1 > "$OWNERSHIP_DIR/ddns-auto-unit"
 nvset ddns_wan_unit 0
@@ -99,7 +99,7 @@ assert_eq "$([ -f "$OWNERSHIP_DIR/ddns-auto-unit" ] && echo yes || echo no)" no
 assert_eq "$(wc -l < "$STATE_DIR/requests" | tr -d ' ')" 3
 nvset ddns_updated 1; nvset ddns_ipaddr 45.1.1.1
 ddns_tick
-assert_eq "$([ -f "$STATE_DIR/ddns-native-pending" ] && echo yes || echo no)" no
+assert_eq "$([ -f "$STATE_DIR/ddns-firmware-pending" ] && echo yes || echo no)" no
 ''')
 
     def test_cgnat_private_and_disabled_backups_not_destinations(self):
@@ -144,7 +144,7 @@ ddns_tick; assert_eq "$(tail -1 "$STATE_DIR/requests")" '0:45.1.1.2'
 
     def test_disabled_ddns_and_unsupported_modes_do_not_update(self):
         for key, value in [('ddns_enable_x', '0'), ('wans_mode', 'fo'),
-                           ('ipv6_service', 'native'), ('ddns_server_x', 'CUSTOM'),
+                           ('ipv6_service', '6in4'), ('ddns_server_x', 'CUSTOM'),
                            ('ddns_wan_unit', 'bogus')]:
             self.run_case(f'''
 nvset {key} {value}; ddns_tick
@@ -193,7 +193,7 @@ printf 'provider b {\\n}\\n' >> "$STATE_DIR/config"
 if ddns_postconf "$STATE_DIR/config"; then exit 1; fi
 ''')
 
-    def test_native_update_rechecks_ui_and_invalidates_only_host_cache(self):
+    def test_firmware_update_rechecks_ui_and_invalidates_only_host_cache(self):
         self.run_case('''
 echo 1 > "$OWNERSHIP_DIR/ddns-auto-unit"
 nvset ddns_hostname_x example.test
@@ -214,7 +214,7 @@ nvset ddns_updated 0; nvset ddns_ipaddr 45.1.1.1
 ddns_tick
 assert_eq "$(cat "$STATE_DIR/requests")" '0:45.1.1.1'
 nvset ddns_updated 1; ddns_tick
-grep -q 'native updater reports success' "$STATE_DIR/ddns-status" || exit 1
+grep -q 'firmware updater reports success' "$STATE_DIR/ddns-status" || exit 1
 ''')
 
     def test_provider_routes_switch_and_cleanup_preserve_probe_rules(self):
@@ -283,7 +283,7 @@ assert_eq "$(cat "$STATE_DIR/ddns-api-ips")" '47.1.1.1
 47.1.1.2'
 ''')
 
-    def test_unsupported_provider_and_custom_config_leave_native(self):
+    def test_unsupported_provider_and_custom_config_leave_firmware(self):
         self.run_case('''
 nvset ddns_server_x WWW.ORAY.COM; ddns_tick
 assert_eq "$([ -f "$STATE_DIR/requests" ] && echo yes || echo no)" no
@@ -334,7 +334,7 @@ ddns_tick
 assert_eq "$(cat "$STATE_DIR/requests")" '0:45.1.1.1'
 nvset ddns_server_x_old WWW.NO-IP.COM
 nvset ddns_hostname_x new.example.test
-if ddns_native_success 45.1.1.1; then exit 1; fi
+if ddns_firmware_success 45.1.1.1; then exit 1; fi
 ''')
 
     def test_update_requests_are_rate_limited_and_do_not_hold_probe_lock(self):

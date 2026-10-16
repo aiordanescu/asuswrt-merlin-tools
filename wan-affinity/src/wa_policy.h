@@ -5,7 +5,7 @@
 #include <string.h>
 
 /* Return 1 for an unfamiliar routing policy, conservatively projected onto
- * source/destination selectors; 0 for native WAN/main tables; -1 if truncated.
+ * source/destination selectors; 0 for firmware WAN/main tables; -1 if truncated.
  * Ignoring additional mark/interface predicates only broadens the exclusion. */
 static int wa_policy_exclusion(const char *row, uint32_t *s, uint32_t *sm,
                                uint32_t *d, uint32_t *dm) {

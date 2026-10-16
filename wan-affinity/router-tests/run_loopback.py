@@ -108,7 +108,7 @@ def main():
             raise RuntimeError(("conntrack dump",p.returncode,p.stderr))
         count = re.search(r"(\d+) flow entries have been shown", p.stderr)
         if not count:
-            raise RuntimeError(("missing native dump count",p.stderr))
+            raise RuntimeError(("missing firmware dump count",p.stderr))
         rows = []
         marks = []
         for line in p.stdout.splitlines():

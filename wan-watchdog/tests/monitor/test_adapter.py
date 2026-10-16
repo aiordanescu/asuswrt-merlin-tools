@@ -12,7 +12,7 @@ class Adapter(unittest.TestCase):
         self.temp=tempfile.TemporaryDirectory();self.addCleanup(self.temp.cleanup)
         self.root=Path(self.temp.name);(self.root/'owner').mkdir()
         self.legacy=self.root/'legacy.sh'
-        self.legacy.write_text('. "'+str(ROOT/'wan-watchdog.sh')+'"\n'+r'''
+        self.legacy.write_text('. "'+str(ROOT/'wan-watchdog-legacy.sh')+'"\n'+r'''
 nvram() { case "$2" in wan0_enable|wan1_enable) echo 1;; wan0_ifname|wan1_ifname) echo lo;; wan0_ipaddr|wan1_ipaddr|wan0_gateway|wan1_gateway) echo 127.0.0.1;; esac; }
 ip() { echo 'local 127.0.0.1 dev lo'; }
 namespace_safe() { return 0; }

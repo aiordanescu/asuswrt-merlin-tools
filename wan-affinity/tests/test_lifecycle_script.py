@@ -149,7 +149,7 @@ open(proc+'/net/netfilter/nfnetlink_queue','w').close()
         self.assertIn("disabled", r.stderr)
         self.assertNotIn("WA_ADMIT", self._chains())
 
-    def test_missing_native_balance_refuses(self):
+    def test_missing_firmware_balance_refuses(self):
         self._write_config(enabled=1)
         self._fake_binary()
         self._seed([])
@@ -207,7 +207,7 @@ open(proc+'/net/netfilter/nfnetlink_queue','w').close()
         self.assertFalse(os.path.exists(self.base))
         self.assertFalse(os.path.exists(self.run_dir))
 
-    def test_complete_start_and_stop_preserves_native_order(self):
+    def test_complete_start_and_stop_preserves_firmware_order(self):
         self._write_config(enabled=1);self._running_binary()
         balance=["-i","br0","-m","state","--state","NEW","-j","balance"]
         before=["-i","wgs1","-j","MARK","--set-xmark","0x1/0x1"]

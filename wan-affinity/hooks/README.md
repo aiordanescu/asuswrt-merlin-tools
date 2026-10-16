@@ -13,7 +13,7 @@ firewall restart. Hooks themselves are silent; helper/supervisor logs are in RAM
 
 Reconciliation is serialized by `flock`. A healthy unchanged helper retains its
 PID and associations while its missing owned chain/jump is rebuilt. The optional
-supervisor also retries native readiness when boot hooks run too early.
+supervisor also retries firmware readiness when boot hooks run too early.
 A manual `stop` survives firewall hooks until explicit `start` or the next boot;
 `disable` persists across boot. Actual firmware boot/upgrade remains a separate
 qualification limit; live tests emulate readiness delay and lose only owned rules.

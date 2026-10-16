@@ -22,15 +22,15 @@ existing ownership/transition purpose.
 
 ## Download and qualification
 
-Download **`wan-watchdog-native-aarch64.tar.gz`** and **`SHA256SUMS`** from the
-[prebuilt beta release](https://github.com/aiordanescu/asuswrt-merlin-tools/releases/tag/wan-tools-2026.10.15-beta.2)
+Download **`wan-watchdog-aarch64.tar.gz`** and **`SHA256SUMS`** from the
+[prebuilt beta release](https://github.com/aiordanescu/asuswrt-merlin-tools/releases/tag/wan-tools-2026.10.15-beta.3)
 to your computer. No compiler, Python or Entware is needed on the router.
 Target: **aarch64 Linux**, tested on RT-AX88U / Merlin 3004.388.12_2.
 Compare the archive's SHA-256 with its entry in `SHA256SUMS`, for example on
 macOS:
 
 ```sh
-shasum -a 256 wan-watchdog-native-aarch64.tar.gz
+shasum -a 256 wan-watchdog-aarch64.tar.gz
 ```
 
 Use `sha256sum` on Linux. See [release verification](../RELEASES.md).
@@ -84,7 +84,7 @@ Transfer the verified downloaded archive from your computer (an SSH alias
 `router` is used here):
 
 ```sh
-scp -O wan-watchdog-native-aarch64.tar.gz router:/tmp/
+scp -O wan-watchdog-aarch64.tar.gz router:/tmp/
 ```
 
 On the router, extract into a new private staging directory. Keep an existing
@@ -92,18 +92,18 @@ staging directory for inspection rather than overwriting it:
 
 ```sh
 umask 077
-mkdir /tmp/wan-watchdog-native-stage
-tar -xzf /tmp/wan-watchdog-native-aarch64.tar.gz -C /tmp/wan-watchdog-native-stage
-cd /tmp/wan-watchdog-native-stage
+mkdir /tmp/wan-watchdog-stage
+tar -xzf /tmp/wan-watchdog-aarch64.tar.gz -C /tmp/wan-watchdog-stage
+cd /tmp/wan-watchdog-stage
 ```
 
 Then install:
 
 ```sh
-sh install-native.sh --install
+sh install.sh --install
 /jffs/scripts/wan-watchdog status
-/jffs/wan-watchdog-native/wan-healthctl
-/jffs/wan-watchdog-native/wan-healthctl --count 0 --timeout 0
+/jffs/wan-watchdog/service/wan-healthctl
+/jffs/wan-watchdog/service/wan-healthctl --count 0 --timeout 0
 ```
 
 The installer saves the old entry point, arms an independent two-minute
@@ -124,16 +124,16 @@ cleanup refuses while a routing owner holds the lock. Keep one routing owner.
 
 ```sh
 # Restore the saved shell service without discarding routing state:
-sh /jffs/wan-watchdog-native/rollback.sh --rollback
+sh /jffs/wan-watchdog/service/rollback.sh --rollback
 ```
 
 Rollback retains the inactive C-monitor bundle for inspection. After confirming
 the restored shell is running and matches its saved entry point, remove that
-inactive directory to uninstall the native replacement. Removing the watchdog
+inactive directory to uninstall the monitor replacement. Removing the watchdog
 itself follows the original README's hook-removal/owned-cleanup procedure.
 Never delete the shared ownership ledger as an uninstall shortcut.
 
-The initial installer refuses an existing `/jffs/wan-watchdog-native` directory. An upgrade must
+The initial installer refuses an existing `/jffs/wan-watchdog/service` directory. An upgrade must
 stage/verify a new bundle, retain the known-good version, and use the same
 guarded stop/atomic-entry/start/health-check handoff. Never overwrite a running
 binary. Reboot/firewall-rebuild and physical WAN-outage qualification require
@@ -152,7 +152,7 @@ python3 -m unittest discover -s tests -p 'test_*.py'
 make router bundle ROUTER_CC='zig cc -target aarch64-linux-musl'
 ```
 
-The archive is `build/wan-watchdog-native-aarch64.tar.gz` relative to the
+The archive is `build/wan-watchdog-aarch64.tar.gz` relative to the
 component directory. Transfer it and follow the same qualification and
 installation steps above. `make router` also builds the separate Linux-only
 `test_socket` and `test_probe` diagnostics described earlier; these are not

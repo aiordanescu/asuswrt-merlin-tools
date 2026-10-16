@@ -2,8 +2,8 @@
 
 Two layers, never mixed:
 
-* **Standalone / native-only** - Merlin's per-WAN connection state and
-  interface/routing readiness.  No probing.  Native "connected" is link/DHCP
+* **Standalone / firmware-only** - Merlin's per-WAN connection state and
+  interface/routing readiness.  No probing.  Firmware "connected" is link/DHCP
   level only; it does not establish connection *quality*.
 * **Enhanced** - an optional, versioned, atomically published snapshot from
   ``wan-watchdog``.  It carries raw flags, an explicit
@@ -12,10 +12,10 @@ Two layers, never mixed:
   publisher/boot identity and a monotonic publication time.
 
 If the enhanced snapshot is missing or stale the component keeps running on
-native state.  It must not read the disappearance of enhanced health as
+firmware state.  It must not read the disappearance of enhanced health as
 recovery: a WAN that enhanced monitoring had excluded stays excluded (UNKNOWN)
 until fresh recovery evidence arrives or the operator explicitly switches to
-native-only policy.
+firmware-only policy.
 """
 
 from __future__ import annotations
@@ -33,7 +33,7 @@ SNAPSHOT_PUBLISHER = "wan-watchdog"
 
 @dataclass
 class WanFacts:
-    """Native per-WAN facts (from ``nvram`` + route readiness)."""
+    """Firmware per-WAN facts (from ``nvram`` + route readiness)."""
 
     enable: Optional[int] = None
     state_t: Optional[int] = None
@@ -47,7 +47,7 @@ def _blank(value: Optional[str]) -> bool:
     return value is None or value == "" or value == "0.0.0.0"
 
 
-def native_eligibility(facts: Optional[WanFacts]) -> str:
+def firmware_eligibility(facts: Optional[WanFacts]) -> str:
     """Ready == usable.  This is *not* a quality claim."""
     if facts is None:
         return UNKNOWN
@@ -144,19 +144,19 @@ def parse_snapshot(text: Optional[str]) -> Optional[Snapshot]:
 
 
 class HealthView:
-    """Composes optional enhanced health over native readiness."""
+    """Composes optional enhanced health over firmware readiness."""
 
     def __init__(
         self,
-        native: Optional[Dict[int, WanFacts]] = None,
+        firmware: Optional[Dict[int, WanFacts]] = None,
         max_age: float = 15.0,
     ) -> None:
-        self.native: Dict[int, WanFacts] = native or {}
+        self.firmware: Dict[int, WanFacts] = firmware or {}
         self.max_age = max_age
         self.snapshot: Optional[Snapshot] = None
         self.snapshot_mono: Optional[float] = None
         self.enhanced = False
-        self.native_policy = False
+        self.firmware_policy = False
         self.excluded: set = set()
         self.last_seq: Optional[int] = None
         self.rejected_snapshots = 0
@@ -186,21 +186,21 @@ class HealthView:
             return
         self.enhanced = (now - self.snapshot_mono) <= self.max_age
 
-    def switch_to_native_policy(self) -> None:
+    def switch_to_firmware_policy(self) -> None:
         """Explicit operator switch: drop enhanced exclusions."""
-        self.native_policy = True
+        self.firmware_policy = True
         self.excluded = set()
 
     # -- decision ----------------------------------------------------------- #
     def eligibility(self, unit: int) -> str:
-        if self.native_policy:
-            return native_eligibility(self.native.get(unit))
+        if self.firmware_policy:
+            return firmware_eligibility(self.firmware.get(unit))
         if self.enhanced and self.snapshot is not None:
             return self.snapshot.wan_state.get(unit, UNKNOWN)
         # enhanced unavailable
         if unit in self.excluded:
             return UNKNOWN  # preserve exclusion; never read absence as recovery
-        return native_eligibility(self.native.get(unit))
+        return firmware_eligibility(self.firmware.get(unit))
 
     @property
     def enhanced_available(self) -> bool:
@@ -211,7 +211,7 @@ class HealthView:
             "enhanced=%s policy=%s wan0=%s wan1=%s excluded=%s"
             % (
                 "yes" if self.enhanced else "no",
-                "native" if self.native_policy else "auto",
+                "firmware" if self.firmware_policy else "auto",
                 self.eligibility(0),
                 self.eligibility(1),
                 ",".join(str(u) for u in sorted(self.excluded)) or "-",

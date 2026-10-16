@@ -14,11 +14,11 @@ The default follows OPNsense's sticky-connections policy: choose a WAN for the s
 
 [b]How it works[/b]
 
-A small native C helper handles connection admission through NFQUEUE. Established/confirmed connections bypass it, including unreplied UDP and TCP retries that Linux still labels NEW. The normal data stream doesn't pass through a userspace proxy. A shell controller handles startup, owned firewall rules, automatic process recovery, upgrades, disable and removal.
+A small C helper handles connection admission through NFQUEUE. Established/confirmed connections bypass it, including unreplied UDP and TCP retries that Linux still labels NEW. The normal data stream doesn't pass through a userspace proxy. A shell controller handles startup, owned firewall rules, automatic process recovery, upgrades, disable and removal.
 
 You can run it independently using the firmware's interface/address/route readiness. With my [url=https://www.snbforums.com/threads/failover-aware-dual-wan-routing-rules-watchdog-for-asuswrt-merlin-load-balancing.97464/]WAN Watchdog[/url], it subscribes to the watchdog's local health socket for loss-aware eligibility. The watchdog still owns routing failover and recovery; affinity decides where to place new connections.
 
-GUI WAN pins and local routing keep their precedence. Unfamiliar VPN/policy-routing selectors are conservatively bypassed, which can reduce affinity coverage. IPv6 continues through native routing.
+GUI WAN pins and local routing keep their precedence. Unfamiliar VPN/policy-routing selectors are conservatively bypassed, which can reduce affinity coverage. IPv6 continues through firmware routing.
 
 [b]Testing and scope[/b]
 
@@ -26,7 +26,7 @@ This is an early release tested on my [b]RT-AX88U running Merlin 3004.388.12_2[/
 
 A 30-second primary-WAN download comparison measured about [b]638 Mb/s bypassing admission versus 632 Mb/s through affinity[/b], with increasing hardware flow counters, all 60 new-connection probes succeeding, and no queue drops. That's one wired client and one download stream over the Internet, not a maximum-throughput or aggregate dual-WAN claim. The qualification notes include the full method and timing outliers.
 
-The installer starts disabled. Busy clients with mixed pre-existing WAN connections may stay under native balancing until those states drain. Other hardware/firmware, an actual reboot/firmware upgrade, and arbitrary VPN policy combinations haven't been fully qualified.
+The installer starts disabled. Busy clients with mixed pre-existing WAN connections may stay under firmware balancing until those states drain. Other hardware/firmware, an actual reboot/firmware upgrade, and arbitrary VPN policy combinations haven't been fully qualified.
 
 [url=https://github.com/aiordanescu/asuswrt-merlin-tools/tree/main/wan-affinity]Source, installation, rollback and qualification notes[/url]
 

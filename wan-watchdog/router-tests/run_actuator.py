@@ -28,7 +28,7 @@ def main():
     assert not re.search(r'^(58|59|60):|3015[89]|30160|127\.88\.0\.2',before,re.M),before
     assert not ssh('for t in 30158 30159 30160;do ip -4 route show table "$t";done\n').strip()
     ssh('umask 077\nmkdir '+root+'\nmkdir '+root+'/run '+root+'/owner\n')
-    for local,name in [(src/'wan-watchdog.sh','legacy'),(src/'lib/ww-adapter.sh','adapter')]:
+    for local,name in [(src/'wan-watchdog-legacy.sh','legacy'),(src/'lib/ww-adapter.sh','adapter')]:
         with local.open('rb') as data:subprocess.run(['ssh',*MUX,'router','cat >'+root+'/'+name],stdin=data,check=True)
     wrapper=f'''. {root}/legacy
 PREFERRED_TARGET_A=198.18.0.100

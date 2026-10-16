@@ -1,7 +1,7 @@
 #!/bin/sh
 # Preserve the shared routing ledger and active markers across the handoff.
 set -eu
-BASE=/jffs/wan-watchdog-native
+BASE=/jffs/wan-watchdog/service
 RUN=/tmp/wan-watchdog
 ENTRY=/jffs/scripts/wan-watchdog
 [ "${1:-}" = --rollback ] || { echo 'usage: rollback.sh --rollback' >&2;exit 2; }
@@ -13,7 +13,7 @@ if [ -r "$RUN/wan-watchdog.pid" ];then
     case "$p" in ''|*[!0-9]*) exit 1;; esac
     if [ -r "/proc/$p/cmdline" ];then
         first=$(tr '\000' '\n' <"/proc/$p/cmdline" | head -n1)
-        if [ "$first" = "$BASE/wan-watchdog-native" ];then
+        if [ "$first" = "$BASE/wan-watchdog" ];then
             kill -TERM "$p"
             tries=0
             while kill -0 "$p" 2>/dev/null && [ "$tries" -lt 10 ];do sleep 1;tries=$((tries+1));done
@@ -33,4 +33,4 @@ nohup "$ENTRY" </dev/null >>/tmp/wan-watchdog.log 2>&1 &
 sleep 2
 [ -r "$RUN/wan-watchdog.pid" ] || exit 1
 rm -f "$BASE/rollback/armed"
-echo 'Legacy watchdog restored; native bundle retained for inspection.'
+echo 'Legacy watchdog restored; monitor bundle retained for inspection.'

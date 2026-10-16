@@ -6,7 +6,7 @@ method raises ``NotImplementedError`` if called.
 
 Original proposed packet path (not a validated production recipe):
 
-    # PREROUTING, inserted before the native `-j balance` jump:
+    # PREROUTING, inserted before the firmware `-j balance` jump:
     -A PREROUTING -i br0 -m state --state NEW -j WAN_AFFINITY_ADMIT
     -A WAN_AFFINITY_ADMIT ... (eligibility exclusions)
     -A WAN_AFFINITY_ADMIT -j NFQUEUE --queue-num <N> --queue-bypass

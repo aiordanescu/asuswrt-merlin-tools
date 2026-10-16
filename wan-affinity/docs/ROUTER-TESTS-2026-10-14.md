@@ -74,7 +74,7 @@ the table is evaluated again, the marked packet is not queued again, and the
 masked CONNMARK save executes. Its following connmark matches counted 97 WAN0
 packets and one WAN1 packet. This correction is in the diagnostic recipe and
 design notes; the production kernel adapter remains unimplemented. It must
-handle re-entry, exclusions, ownership and native-rule ordering deliberately.
+handle re-entry, exclusions, ownership and firmware-rule ordering deliberately.
 
 ### A provisional timeout is not evidence that a connection ended
 
@@ -101,7 +101,7 @@ were tested. Neither preserves packets already held when a queue is destroyed.
 Fail-open traffic may also lose the component's sticky guarantee while the
 component is unhealthy. The production lifecycle must report this degraded
 state and remove owned admission hooks safely when disabling/failing over to
-native behavior. It must not claim uninterrupted stickiness through helper
+firmware behavior. It must not claim uninterrupted stickiness through helper
 overload/crash.
 
 ## Remaining gates
@@ -109,7 +109,7 @@ overload/crash.
 - Implement a real on-router serialized helper/event/dump adapter and lifecycle
   control. The current production adapter is still documentation-only.
 - Test scoped LAN ingress and actual WAN selection for TCP, UDP and QUIC,
-  including existing marks, native ports, GUI pins and VPN exclusions.
+  including existing marks, firmware ports, GUI pins and VPN exclusions.
 - Qualify both policy lifecycles, including persistent-affinity return to its
   preferred WAN after recovery; the kernel diagnostics exercised sticky admission.
 - Validate conntrack identity/event-loss recovery and non-atomic dump boundaries

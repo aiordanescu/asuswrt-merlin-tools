@@ -29,13 +29,13 @@ Treat other firmware, router architectures, and IPv6 as unqualified. Read the
   source IP and a router seed. It can return **new** connections to that WAN
   after recovery. This is a different policy from the default sticky mode.
 - A restart can adopt a source whose surviving relevant connections all use one
-  identifiable WAN. Mixed or unattributed sources remain under native balancing
+  identifiable WAN. Mixed or unattributed sources remain under firmware balancing
   until their relevant states drain. Enabling this on a busy LAN therefore does
   not instantly convert every existing client into a sticky source.
 
 Identity is the **LAN IPv4 address**, not the device MAC, user, application,
 remote site, or a permanent DHCP identity. IPv6 and protocols other than TCP/UDP
-continue through native routing.
+continue through firmware routing.
 
 ## Optional WAN Watchdog integration
 
@@ -44,11 +44,10 @@ how it knows which WANs are usable:
 
 | Your setup | Setting | Health information |
 | --- | --- | --- |
-| **WAN Watchdog installed** | `HEALTH_SOURCE=socket` | WAN Watchdog's measured reachability, packet loss and recovery status |
-| **Router readiness only** | `HEALTH_SOURCE=native` | Interface, address, gateway, state and route readiness; no active Internet probes |
+| **WAN Watchdog installed** | `HEALTH_SOURCE=watchdog` | WAN Watchdog's measured reachability, packet loss and recovery status |
+| **Router readiness only** | `HEALTH_SOURCE=firmware` | Interface, address, gateway, state and route readiness; no active Internet probes |
 
-Here, `native` is the existing setting name for **router readiness**. The C
-implementation of [WAN Watchdog](https://github.com/aiordanescu/asuswrt-merlin-tools/blob/main/wan-watchdog/GUIDE.md) uses `socket`.
+Use `watchdog` for **WAN Watchdog** and `firmware` for **router readiness**.
 
 WAN Watchdog continues to control household routing failover and recovery.
 Those routing changes can override affinity's WAN choice and interrupt existing
@@ -68,10 +67,10 @@ remains the fallback.
 
 ## Routing boundaries
 
-The owned `WA_ADMIT` chain is inserted immediately before native `balance` in
+The owned `WA_ADMIT` chain is inserted immediately before firmware `balance` in
 mangle PREROUTING, for NEW, ORIGINAL-direction traffic from the selected LAN
 scope on the firmware's `lan_ifname`. It queues only packets without a WAN mark.
-The native routing tables and existing connection handling remain authoritative.
+The firmware routing tables and existing connection handling remain authoritative.
 Confirmed conntrack entries and existing connection WAN marks bypass the queue
 too: `NEW` also includes TCP retries and unreplied UDP, which must keep their
 existing NAT mapping across a failover.
@@ -88,7 +87,7 @@ over coverage; arbitrary VPN clients, VPN Director edits and third-party policy
 systems are not comprehensively qualified. Policy facts refresh asynchronously,
 so GUI/policy edits are not an atomic transaction with packet admission.
 
-Only the native WAN field `0xf0000000` changes; other mark bits are retained.
+Only the firmware WAN field `0xf0000000` changes; other mark bits are retained.
 The pass-through sentinel uses that reserved field and is cleared on re-entry.
 `NF_REPEAT` is required to reach the following masked CONNMARK save; `NF_ACCEPT`
 was tested and found unsuitable for that packet path. Existing states are not
@@ -99,7 +98,7 @@ flushed on failover, recovery, stop, upgrade, or uninstall.
 No Entware dependency or router firmware rebuild is required for the tested
 static aarch64 binary. Download **`wan-affinity-aarch64.tar.gz`** and
 **`SHA256SUMS`** from the
-[prebuilt beta release](https://github.com/aiordanescu/asuswrt-merlin-tools/releases/tag/wan-tools-2026.10.15-beta.2)
+[prebuilt beta release](https://github.com/aiordanescu/asuswrt-merlin-tools/releases/tag/wan-tools-2026.10.15-beta.3)
 to your computer. This build targets **aarch64 Linux** and was tested on the
 RT-AX88U / Merlin 3004.388.12_2. Compare the archive's checksum with its entry
 in `SHA256SUMS` (on macOS):
@@ -109,7 +108,7 @@ shasum -a 256 wan-affinity-aarch64.tar.gz
 ```
 
 On Linux use `sha256sum`. See
-[release and verification details](https://github.com/aiordanescu/asuswrt-merlin-tools/blob/wan-tools-2026.10.15-beta.2/RELEASES.md).
+[release and verification details](https://github.com/aiordanescu/asuswrt-merlin-tools/blob/wan-tools-2026.10.15-beta.3/RELEASES.md).
 Using an SSH alias named `router`, transfer the verified archive:
 
 ```sh
@@ -150,7 +149,7 @@ MAX_RECONCILE_SECONDS=15
 PROVISIONAL_WARNING_SECONDS=2
 RECONCILE_INTERVAL=2
 AFFINITY_SEED=
-HEALTH_SOURCE=socket
+HEALTH_SOURCE=watchdog
 HEALTH_SOCKET=/tmp/wan-watchdog/health.sock
 STATUS_DIR=/tmp/wan-affinity
 ```
@@ -212,11 +211,11 @@ stopped across subsequent firewall hooks. `start` explicitly clears that RAM
 stop marker; a reboot clears it too. **Use `disable` to persist across boots.**
 Changing `ENABLED=0` is also honored by the next supervisor reconciliation.
 `uninstall` additionally removes only the marked hook blocks and component
-files. Ordinary rules, native routing and conntrack entries remain in place.
+files. Ordinary rules, firmware routing and conntrack entries remain in place.
 
 The kernel queue has bounded length, queue-full fail-open, and absent-listener
 bypass. Packets already queued when a process dies can be lost and retransmitted.
-Native fallback can distribute new connections across WANs, so sticky placement
+Firmware fallback can distribute new connections across WANs, so sticky placement
 is temporarily unavailable during failures, conservative adoption or capacity
 limits. A blocked helper can hold queued packets until recovery/full-queue
 fallback; fail-open is not an immediate deadline for every packet.
@@ -229,7 +228,7 @@ fails, it restores that set. Manual previous-version rollback:
 sh /jffs/wan-affinity/rollback.sh --rollback
 ```
 
-For an immediate return to native balancing, use `disable`. A first installation
+For an immediate return to firmware balancing, use `disable`. A first installation
 has no previous affinity version to restore.
 
 ## Status and limits
@@ -241,12 +240,12 @@ refresh failures and maximum observed packet timestamp delay.
 
 The helper bounds associations at 1,024 and tracked tuples at 4,096, plus
 bounded local/policy selector lists. Incomplete, malformed or oversized views
-are rejected. Uncertain observations retain state; stale native facts prevent
+are rejected. Uncertain observations retain state; stale firmware facts prevent
 new eligibility. This is a home-router implementation, not a claim to support
 300,000 simultaneous conntrack entries. Monitor `uncertain`, `last_error`,
 `refresh_failed`, queue drops, CPU and memory when evaluating a busier network.
 
-A bounded worker reads native facts and complete U-then-C conntrack views;
+A bounded worker reads firmware facts and complete U-then-C conntrack views;
 packet admission stays in the parent loop. RAM holds the frequent state and
 bounded logs. Source associations are reconstructed rather than written to
 flash. Hardware acceleration is left enabled. A

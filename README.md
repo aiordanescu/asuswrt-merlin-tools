@@ -16,9 +16,9 @@ installer adds only its own marked blocks.
 
 ## Prebuilt downloads
 
-[Download the WAN tools beta](https://github.com/aiordanescu/asuswrt-merlin-tools/releases/tag/wan-tools-2026.10.15-beta.2)
+[Download the WAN tools beta](https://github.com/aiordanescu/asuswrt-merlin-tools/releases/tag/wan-tools-2026.10.15-beta.3)
 to install without a compiler or Entware. The release provides separate
-`wan-affinity-aarch64.tar.gz` and `wan-watchdog-native-aarch64.tar.gz` bundles,
+`wan-affinity-aarch64.tar.gz` and `wan-watchdog-aarch64.tar.gz` bundles,
 SHA-256 checksums and build information. Target: **aarch64 Linux**, tested on
 the RT-AX88U / Merlin 3004.388.12_2 above. Other architectures are not included.
 The shell-only tools can be used directly from source.

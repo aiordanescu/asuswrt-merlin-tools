@@ -114,6 +114,6 @@ int main(void) {
     CHECK(!wh_uuid("046fcf09-66c7-402c-85f4-186b49235730", uuid));
     CHECK(wh_uuid("short", uuid));
     CHECK(wh_uuid("z46fcf09-66c7-402c-85f4-186b49235730", uuid));
-    printf("native core/codec: %d checks, %d failures\n", checks, failures);
+    printf("monitor core/codec: %d checks, %d failures\n", checks, failures);
     return failures ? 1 : 0;
 }

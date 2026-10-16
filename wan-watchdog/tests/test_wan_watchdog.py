@@ -6,7 +6,7 @@ import shlex
 import tempfile
 import unittest
 
-SCRIPT = Path(__file__).resolve().parents[1] / 'wan-watchdog.sh'
+SCRIPT = Path(__file__).resolve().parents[1] / 'wan-watchdog-legacy.sh'
 
 class WatchdogTests(unittest.TestCase):
     def run_case(self, body):

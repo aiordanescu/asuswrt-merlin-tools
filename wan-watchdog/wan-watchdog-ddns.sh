@@ -1,5 +1,5 @@
 #!/bin/sh
-# Supply the watchdog's Auto selection to Merlin's native Inadyn updater.
+# Supply the watchdog's Auto selection to Merlin's firmware Inadyn updater.
 # Never extract credentials or change ddns_wan_unit, wan_primary, or WAN services.
 STATE_DIR=${STATE_DIR:-/tmp/wan-watchdog}
 OWNERSHIP_DIR=${OWNERSHIP_DIR:-/jffs/wan-watchdog}
@@ -44,7 +44,7 @@ ddns_public_ip() {
     $1==255 {exit 1}
   '
 }
-# Endpoints from Merlin's provider implementations. Unknown providers stay native.
+# Endpoints from Merlin's provider implementations. Unknown providers stay firmware.
 ddns_api_host() {
   case "$(nvram get ddns_server_x)" in
     WWW.NAMECHEAP.COM) echo dynamicdns.park-your-domain.com ;;
@@ -149,7 +149,7 @@ ddns_report() {
   ddns_log "$1"
 }
 ddns_status() { printf 'DDNS %s\n' "$(ddns_read "$STATE_DIR/ddns-status" 'helper installed; awaiting measurements')"; }
-ddns_native_success() {
+ddns_firmware_success() {
   [ "$(nvram get ddns_updated)" = 1 ] && [ "$(nvram get ddns_ipaddr)" = "$1" ] &&
   [ "$(nvram get ddns_server_x_old)" = "$(nvram get ddns_server_x)" ] &&
   [ "$(nvram get ddns_hostname_old)" = "$(nvram get ddns_hostname_x)" ]
@@ -160,16 +160,16 @@ ddns_tick() {
   if ! ddns_supported; then
     ddns_routes_clear
     if [ -f "$OWNERSHIP_DIR/ddns-auto-unit" ]; then
-      ddns_atomic "$STATE_DIR/ddns-native-pending" 1
+      ddns_atomic "$STATE_DIR/ddns-firmware-pending" 1
       rm -f "$OWNERSHIP_DIR/ddns-auto-unit" "$STATE_DIR/ddns-recovery" "$STATE_DIR/ddns-requested"
-      ddns_request native
+      ddns_request firmware
     fi
-    if [ -f "$STATE_DIR/ddns-native-pending" ]; then
-      if [ "$(nvram get ddns_enable_x)" != 1 ] || { [ "$(ddns_read "$STATE_DIR/ddns-requested" '')" = native ] && [ "$(nvram get ddns_updated)" = 1 ]; }; then
-        rm -f "$STATE_DIR/ddns-native-pending"
-      else ddns_request native; fi
+    if [ -f "$STATE_DIR/ddns-firmware-pending" ]; then
+      if [ "$(nvram get ddns_enable_x)" != 1 ] || { [ "$(ddns_read "$STATE_DIR/ddns-requested" '')" = firmware ] && [ "$(nvram get ddns_updated)" = 1 ]; }; then
+        rm -f "$STATE_DIR/ddns-firmware-pending"
+      else ddns_request firmware; fi
     fi
-    ddns_report 'native selection (disabled, unsupported configuration, or missing postconf hook)'
+    ddns_report 'firmware selection (disabled, unsupported configuration, or missing postconf hook)'
     return
   fi
   case "$(nvram get ddns_wan_unit)" in
@@ -177,19 +177,19 @@ ddns_tick() {
       ddns_routes_clear
       ddns_fixed=$(nvram get ddns_wan_unit)
       if [ -f "$OWNERSHIP_DIR/ddns-auto-unit" ]; then
-        ddns_atomic "$STATE_DIR/ddns-native-pending" 1
+        ddns_atomic "$STATE_DIR/ddns-firmware-pending" 1
         rm -f "$OWNERSHIP_DIR/ddns-auto-unit" "$STATE_DIR/ddns-recovery" "$STATE_DIR/ddns-requested"
-        ddns_request native
+        ddns_request firmware
       fi
-      if [ -f "$STATE_DIR/ddns-native-pending" ]; then
+      if [ -f "$STATE_DIR/ddns-firmware-pending" ]; then
         ddns_fixed_ip=$(ddns_unit_ip "$ddns_fixed" 2>/dev/null)
-        if [ -n "$ddns_fixed_ip" ] && ddns_native_success "$ddns_fixed_ip"; then
-          rm -f "$STATE_DIR/ddns-native-pending"
-        else ddns_request native; fi
+        if [ -n "$ddns_fixed_ip" ] && ddns_firmware_success "$ddns_fixed_ip"; then
+          rm -f "$STATE_DIR/ddns-firmware-pending"
+        else ddns_request firmware; fi
       fi
       ddns_report "UI fixed WAN$ddns_fixed; watchdog does not redirect DDNS"
       return ;;
-    -1) rm -f "$STATE_DIR/ddns-native-pending" ;;
+    -1) rm -f "$STATE_DIR/ddns-firmware-pending" ;;
     *) ddns_report 'invalid UI interface selection; no DDNS action'; return ;;
   esac
   ddns_preferred=none
@@ -197,7 +197,7 @@ ddns_tick() {
     if ddns_unit_ip "$ddns_scan" >/dev/null; then ddns_preferred=$ddns_scan; break; fi
   done
   if [ "$ddns_preferred" = none ]; then
-    ddns_report 'Auto: no directly assigned public IPv4; keeping native DDNS behavior'
+    ddns_report 'Auto: no directly assigned public IPv4; keeping firmware DDNS behavior'
     return
   fi
   ddns_current=$(ddns_read "$OWNERSHIP_DIR/ddns-auto-unit" "$ddns_preferred")
@@ -239,15 +239,15 @@ ddns_tick() {
   fi
   ddns_signature="$ddns_wanted:$ddns_expected"
   if [ "$(ddns_read "$STATE_DIR/ddns-requested" '')" != "$ddns_signature" ] ||
-     ! ddns_native_success "$ddns_expected"; then
+     ! ddns_firmware_success "$ddns_expected"; then
     rm -f "$STATE_DIR/ddns-verified"
     ddns_request "$ddns_signature"
   else
     ddns_verify_signature="$ddns_signature:$(nvram get ddns_hostname_x):$(nvram get ddns_server_x)"
     if [ "$(ddns_read "$STATE_DIR/ddns-verified" '')" = "$ddns_verify_signature" ]; then
-      ddns_report "Auto WAN$ddns_wanted $ddns_expected; native updater reports success; public DNS verified"
+      ddns_report "Auto WAN$ddns_wanted $ddns_expected; firmware updater reports success; public DNS verified"
     else
-      ddns_report "Auto WAN$ddns_wanted $ddns_expected; native updater reports success; public DNS verification pending"
+      ddns_report "Auto WAN$ddns_wanted $ddns_expected; firmware updater reports success; public DNS verification pending"
       ddns_verify_last=$(ddns_read "$STATE_DIR/ddns-verify-last" 0)
       if [ "$((NOW-ddns_verify_last))" -ge 60 ]; then
         ddns_atomic "$STATE_DIR/ddns-verify-last" "$NOW"
@@ -295,7 +295,7 @@ ddns_postconf() {
     {print}
     END {print "iface = " iface}
   ' "$1") || return 1
-  # Rewrite the existing native file; do not create another credentials file.
+  # Rewrite the existing firmware file; do not create another credentials file.
   printf '%s\n' "$ddns_rewritten" > "$1"
   ddns_result=$?
   unset ddns_rewritten
@@ -303,19 +303,19 @@ ddns_postconf() {
 }
 ddns_update() {
   # Recheck the UI immediately before any external update. No WAN writes.
-  if [ "$1" != native ]; then
+  if [ "$1" != firmware ]; then
     [ "$(nvram get ddns_wan_unit)" = -1 ] && ddns_supported || return 0
     ddns_selected=$(ddns_read "$OWNERSHIP_DIR/ddns-auto-unit" none)
     ddns_expected=$(ddns_unit_ip "$ddns_selected") || return 0
     [ "$1" = "$ddns_selected:$ddns_expected" ] || return 0
     # An already correct successful publication requires no provider call.
-    if ddns_native_success "$ddns_expected"; then return 0; fi
+    if ddns_firmware_success "$ddns_expected"; then return 0; fi
   fi
   pidof inadyn >/dev/null 2>&1 && return 0
   [ "$(nvram get ddns_enable_x)" = 1 ] || return 0
   ddns_host=$(nvram get ddns_hostname_x)
   case "$ddns_host" in ''|*[!a-zA-Z0-9_.@-]*) return 1 ;; esac
-  # The native pre-hook no-change check would otherwise skip regeneration.
+  # The firmware pre-hook no-change check would otherwise skip regeneration.
   rm -f "$DDNS_CACHE_DIR/$ddns_host.cache"
   service restart_ddns
 }

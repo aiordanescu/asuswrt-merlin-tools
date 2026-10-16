@@ -14,18 +14,18 @@ from base import (
     make_state,
     reconcile,
 )
-from wan_affinity.mechanisms import NativeThenLearn, TimeoutIpset
+from wan_affinity.mechanisms import FirmwareThenLearn, TimeoutIpset
 
 SRC = "192.168.1.100"
 
 
 class RejectedMechanismTests(unittest.TestCase):
-    def test_native_then_learn_splits_simultaneous_first_packets(self):
+    def test_firmware_then_learn_splits_simultaneous_first_packets(self):
         domain = make_domain()
         picks = iter([0, 1])
-        native_then_learn = NativeThenLearn(domain, native_pick=lambda src: next(picks))
-        first = native_then_learn.admission_decision(make_packet("c1", src=SRC))
-        second = native_then_learn.admission_decision(make_packet("c2", src=SRC))
+        firmware_then_learn = FirmwareThenLearn(domain, firmware_pick=lambda src: next(picks))
+        first = firmware_then_learn.admission_decision(make_packet("c1", src=SRC))
+        second = firmware_then_learn.admission_decision(make_packet("c2", src=SRC))
         self.assertNotEqual(first.wan, second.wan)  # the defect
 
         # the serialized engine does not split them

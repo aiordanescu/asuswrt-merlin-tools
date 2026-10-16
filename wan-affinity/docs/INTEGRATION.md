@@ -4,9 +4,9 @@
 > in the [README](../README.md) and
 > [2026-10-15 qualification report](QUALIFICATION-2026-10-15.md).
 
-> Native health update (2026-10-15): [HEALTH-SOCKET.md](HEALTH-SOCKET.md)
+> Watchdog health update (2026-10-15): [HEALTH-SOCKET.md](HEALTH-SOCKET.md)
 > supersedes the proposed text publisher below. Historical stage boundaries
-> describe earlier work; current user authorization also covers the native
+> describe earlier work; current user authorization also covers the C
 > watchdog implementation and guarded qualification. Wider affinity enablement
 > remains a separate rollout gate.
 
@@ -43,7 +43,7 @@ NF_ACCEPT/re-entry correction and the removal of provisional-state TTL expiry.
   model contract and the real adapter's failure boundaries.
 - Implement `sticky` as the default policy and selectable persistent
   `affinity`, including their distinct recovery behavior and live WAN weights.
-- Implement native standalone readiness plus optional watchdog integration,
+- Implement firmware standalone readiness plus optional watchdog integration,
   with recovery-aware admission and conservative stale-snapshot handling.
   No independent quality-probe engine or mandatory watchdog dependency.
 - Preserve manual GUI pins, local/VPN/incoming exclusions, unrelated marks,
@@ -94,7 +94,7 @@ NF_ACCEPT/re-entry correction and the removal of provisional-state TTL expiry.
 
 ## Health source
 
-* Independent native-readiness monitoring: `wanN_enable`, `wanN_state_t`,
+* Independent firmware-readiness monitoring: `wanN_enable`, `wanN_state_t`,
   lease/gateway/interface, route readiness. No probing, no quality claim.
 * Optional versioned snapshot consumed from `wan-watchdog`. The publisher is a
   small, additive write in the watchdog's status path (does not change any
@@ -113,7 +113,7 @@ NF_ACCEPT/re-entry correction and the removal of provisional-state TTL expiry.
   objects and its original pin were restored afterward.
 - The separate synthetic matrix verified that disappearance/staleness cannot
   recover an excluded WAN, and that sticky and affinity retain their distinct
-  recovery behavior. See [the native qualification report](../../wan-watchdog/QUALIFICATION-2026-10-15.md).
+  recovery behavior. See [the watchdog qualification report](../../wan-watchdog/QUALIFICATION-2026-10-15.md).
 
 ## Identity and selection
 
@@ -147,7 +147,7 @@ NF_ACCEPT/re-entry correction and the removal of provisional-state TTL expiry.
 
 The adapter's control surface is complete for review: `wan-affinity.sh
 {start|status|stop|disable|cleanup|uninstall}` owns exactly one mangle chain and
-one PREROUTING jump, requires a single-client scope, checks native readiness
+one PREROUTING jump, requires a single-client scope, checks firmware readiness
 before inserting rules and rolls back on partial failure. The helper is
 `src/wan_affinity.c`; the decision engine it calls is `src/wa_engine.c`. Build
 instructions and the current (uncompiled-here) caveat are in `BUILDING.md`.

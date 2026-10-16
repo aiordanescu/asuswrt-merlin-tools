@@ -54,7 +54,7 @@ class ExclusionTests(unittest.TestCase):
         self.assertEqual(result.mark & NON_WAN_MASK, 0x00000005)
 
     def test_web_traffic_is_in_scope(self):
-        # HTTPS/QUIC are not special-cased: the native 443/8443/80 exemptions
+        # HTTPS/QUIC are not special-cased: the firmware 443/8443/80 exemptions
         # only skip marking, so this policy claims them too.
         engine = make_engine()
         result = engine.admission_decision(

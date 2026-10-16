@@ -22,7 +22,7 @@ class Parity(unittest.TestCase):
                 if t>755:a=rng.choice([1,1,1,0,-1]);b=rng.choice([1,1,1,0])
                 rows.append((t,u,enabled,active,a,b,int(t in (1,541))))
         trace=''.join(' '.join(map(str,r))+'\n' for r in rows)
-        native=subprocess.run([str(ROOT/'build/replay')],input=trace,text=True,capture_output=True,check=True).stdout.splitlines()
+        monitor=subprocess.run([str(ROOT/'build/replay')],input=trace,text=True,capture_output=True,check=True).stdout.splitlines()
         with tempfile.TemporaryDirectory() as d:
             commands=['. "$WATCHDOG_SOURCE"','mkdir -p "$STATE_DIR"']
             for t,u,en,active,a,b,reset in rows:
@@ -31,9 +31,9 @@ class Parity(unittest.TestCase):
                 commands += [f'NOW={t}',f'echo {en} >"$STATE_DIR/enabled_wan{u}"',f'echo {a} >"$STATE_DIR/probe_{u}_a"',f'echo {b} >"$STATE_DIR/probe_{u}_b"',
                     f'{"touch" if active else "rm -f"} "$STATE_DIR/active_wan{u}"',
                     f'record_sample "$STATE_DIR/samples_{u}_a" {a}',f'record_sample "$STATE_DIR/samples_{u}_b" {b}',f'classify_wan {u}',f'cat "$STATE_DIR/health_wan{u}"']
-            env=dict(os.environ,WAN_WATCHDOG_LIBRARY_ONLY='1',WATCHDOG_SOURCE=str(ROOT/'wan-watchdog.sh'),STATE_DIR=d,DDNS_HELPER='/nonexistent')
+            env=dict(os.environ,WAN_WATCHDOG_LIBRARY_ONLY='1',WATCHDOG_SOURCE=str(ROOT/'wan-watchdog-legacy.sh'),STATE_DIR=d,DDNS_HELPER='/nonexistent')
             shell=subprocess.run(['sh'],input='\n'.join(commands)+'\n',env=env,text=True,capture_output=True,check=True).stdout.splitlines()
-        self.assertEqual(len(native),len(shell))
-        for row,n,s in zip(rows,native,shell):self.assertEqual(n,s,f'trace row {row}')
+        self.assertEqual(len(monitor),len(shell))
+        for row,n,s in zip(rows,monitor,shell):self.assertEqual(n,s,f'trace row {row}')
 
 if __name__=='__main__':unittest.main()

@@ -122,7 +122,7 @@ rm -f {root}/armed
         s = ssh('cat /tmp/wan-affinity/status\n')
         assert 'mode=sticky enhanced=yes uncertain=no wan0=eligible wan1=eligible' in s, s
         assert 'refresh_failed=0' in s, s
-        h = json.loads(ssh('/jffs/wan-watchdog-native/wan-healthctl\n'))
+        h = json.loads(ssh('/jffs/wan-watchdog/service/wan-healthctl\n'))
         assert h['fresh'] and h['desired'] == h['applied'] == -1 and not h['routing_error'], h
         assert all(w['eligible'] and not w['bad'] for w in h['wan']), h
         q = ssh('cat /proc/net/netfilter/nfnetlink_queue\n').split()

@@ -30,8 +30,8 @@ used for queue binding, module loading or test rules.
 
 * Load balance `wans_mode=lb`, `wans_lb_ratio=2:1`; wan0=eth0, wan1=eth2;
   marks `0x80000000`/`0x90000000`, mask `0xf0000000`.
-* Native PREROUTING: `-i br0 -m state --state NEW -j balance`, then
-  `connmark --mark 0x80000000 -j CONNMARK --restore-mark`. Native `balance`
+* Firmware PREROUTING: `-i br0 -m state --state NEW -j balance`, then
+  `connmark --mark 0x80000000 -j CONNMARK --restore-mark`. Firmware `balance`
   randomly picks WAN0 at `--probability 0.67` else WAN1, and returns early for
   local/VPN destinations and TCP 443/8443 and UDP 443/80.
 * `CONNMARK` help: `--save-mark` = "save the packet nfmark in the connection";
@@ -42,7 +42,7 @@ used for queue binding, module loading or test rules.
   kernel protocol 6.
 * `conntrack -E` streamed ~67 events in 5 s with no errors (runtime observation;
   no rules, modules or queues touched).
-* `dns_probe=0`, `wan_dns_probe=0` -> native "connected" is link/DHCP only.
+* `dns_probe=0`, `wan_dns_probe=0` -> firmware "connected" is link/DHCP only.
 * No Entware (`/opt` -> empty `tmp/opt`, no `opkg`).
 * GUI pins: `wans_routing_rulelist`, 17 entries.
 
@@ -61,7 +61,7 @@ used for queue binding, module loading or test rules.
 | Validated empty vs truncated/miscounted/garbage dumps | `test_reconcile` |
 | Pins (source/destination/subnet), local/VPN/incoming/already-marked excluded; only WAN bits changed; HTTPS/QUIC in scope | `test_exclusions` |
 | Restart: single-WAN reconstruct, mixed-WAN/unattributed deferred, pinned ignored | `test_restart` |
-| Health: native readiness, recovery hold != recovered, enhanced disappearance preserves exclusion, reassign only on known-unusable | `test_health` |
+| Health: firmware readiness, recovery hold != recovered, enhanced disappearance preserves exclusion, reassign only on known-unusable | `test_health` |
 | Weighted ratio, affinity determinism, MAC-derived seed stability | `test_selection` |
 | Randomized serialization stress (3 seeds) + recovery does not force return | `test_invariants` |
 | Rejected mechanisms fail the same scenarios | `test_rejected` |
@@ -101,7 +101,7 @@ installed, enabled, hooked, committed or pushed. See
 
 Provide one isolated Linux environment (throwaway container/VM/netns) with the
 component's real packet path: bind a queue, verify the verdict-mark or the
-IP-set alternative, capture packets and conntrack marks, and re-run the
+IP-set approach, capture packets and conntrack marks, and re-run the
 simultaneous-first-connection and expiry-overlap scenarios against the kernel.
 At that point router mutation was not authorized. The user subsequently
 authorized carefully scoped loopback tests; the report distinguishes their

@@ -49,7 +49,7 @@ watchdog publisher and passed 48 forwarding probes across both policies. See
 That earlier result is not a claim that we physically failed a WAN during this
 rollout. Socket loss cannot prove recovery of an excluded WAN.
 
-The one-client service test also transferred 30 MB natively and 30 MB through
+The one-client service test also transferred 30 MB through firmware balancing and 30 MB through
 sticky admission on the same primary WAN. All three admitted HTTPS flows had
 the expected connmark/NAT egress; hardware acceleration remained enabled.
 These short transfers are connectivity/obvious-regression checks, not a
@@ -73,7 +73,7 @@ The final loopback run used only the dedicated test addresses, UDP port, queue
 - Release followed by drop permits cleanup without a timer guessing liveness.
 - During a roughly 1.57-second collector delay, 360 admissions and 72 echo probes
   completed; observed maximum echo round trip was **0.233 ms**.
-- Worker timeouts make native readiness unknown while admission stays responsive.
+- Worker timeouts make firmware readiness unknown while admission stays responsive.
 - Killing the parent leaves neither an open queue in its worker nor a running
   orphan collector. The test queue is empty after cleanup.
 
@@ -85,13 +85,13 @@ bypass. Packets already queued when a listener dies can still be dropped.
 Real-binary service tests checked serialized concurrent reconciliation, owned-rule
 loss and repair without changing the healthy helper PID, crash recovery,
 SIGSTOP/stalled-heartbeat recovery, invalid configuration rejection, delayed
-native-firewall readiness and manual-stop persistence. Only private objects and
+firmware-firewall readiness and manual-stop persistence. Only private objects and
 one GUI-pinned client were used; no shared firewall rebuild was requested.
 
 Persistent install qualification passed a disabled fresh install, a scoped
 start, same-version upgrade preserving configuration, explicit previous-version
 rollback, deliberately failed daemon startup with automatic restoration, persistent
-disable and uninstall. Original hook bytes, native rules, pins, watchdog owner,
+disable and uninstall. Original hook bytes, firmware rules, pins, watchdog owner,
 firewall rules and empty queue were verified afterward. The existing watchdog,
 DDNS cron registration and TTL hook were retained.
 
@@ -107,10 +107,10 @@ not a claim that the earlier short controller tests covered steady supervision.
 ## Guarded LAN rollout
 
 The installed configuration uses sticky mode, zero extra idle retention,
-whole-LAN scope, supervision and `HEALTH_SOURCE=socket`. A router-local timed
+whole-LAN scope, supervision and `HEALTH_SOURCE=watchdog`. A router-local timed
 disable guard protects initial rollout independently of SSH. Existing GUI pins
 are retained; the Mac mini's temporary test pin changes are separately restored.
-Mixed pre-existing sources remain transitional under native balancing rather
+Mixed pre-existing sources remain transitional under firmware balancing rather
 than forcing a conflicting association.
 
 The corrected service retained one helper PID throughout the final live check.
@@ -142,7 +142,7 @@ The helper supports the default conntrack zone, 1,024 source associations and
 4,096 tracked tuples. Full, malformed, stale or incomplete views retain
 uncertainty and do not prove idle. Unknown policy-routing selectors may bypass
 more traffic than necessary, including an entire LAN for a mark-only VPN rule.
-Kernel fallback preserves native connectivity but cannot preserve the sticky
+Kernel fallback preserves firmware connectivity but cannot preserve the sticky
 placement guarantee while the helper is unavailable or declines admission.
 
 ## Reproduction and evidence

@@ -20,7 +20,7 @@ not a durable event log.
 
 ## Encoding
 
-Use `wh_encode`/`wh_decode`, or implement the layout below. Never send a native
+Use `wh_encode`/`wh_decode`, or implement the layout below. Never send an in-memory
 C struct. All integers are big-endian; signed values use 32-bit two's
 complement. IPv4 values are four network-order bytes. Version 1 is exactly
 384 bytes: header 112 plus two 136-byte records in unit order. Reject unknown
@@ -78,7 +78,7 @@ reversal may admit its acceptable destination before the normal hold. A
 routing ledger entry records intent; applied fields advance only after a
 successful worker acknowledgement.
 
-Conjoin health with native address/interface/route readiness. Match source
+Conjoin health with firmware address/interface/route readiness. Match source
 address and interface before acting on a record. Publisher loss never proves
 recovery. Consumers own their assignment policy and UNKNOWN behavior; a
 recovered WAN becoming eligible alone must not move existing connections.

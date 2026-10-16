@@ -22,9 +22,9 @@ from both complete reads can be retired. Neither elapsed time nor a lone
 DESTROY event authorizes expiry.
 
 The reader validates each process exit, every row and the independently
-reported native row count. The installed firmware ignores source filtering and
+reported firmware row count. The installed firmware ignores source filtering and
 extended output for its unconfirmed dump, so the worker filters explicitly and
-accepts that table's native format without requiring an ID. Confirmed rows
+accepts that table's firmware format without requiring an ID. Confirmed rows
 still require the expected metadata. Duplicates from U-to-C migration retain
 confirmed NAT attribution.
 
@@ -37,7 +37,7 @@ expiry. Confirmed-only legacy model inputs retain their conservative behavior.
 
 ## Latency: a bounded refresh worker
 
-Only a separate process performs NVRAM reads, native route checks, optional
+Only a separate process performs NVRAM reads, firmware route checks, optional
 health-snapshot reads and conntrack collection. The parent continues servicing
 NFQUEUE while that work runs. It consumes a bounded amount of nonblocking pipe
 data per loop and applies only a complete, successfully exited worker result.
@@ -46,12 +46,12 @@ collision checks; hashes are not connection identities.
 
 The worker has a five-second deadline, its own process group, no copy of the
 queue socket, close-on-exec IPC descriptors and Linux parent-death handling.
-Failure leaves prior assignments in place and reports uncertainty. Once native
+Failure leaves prior assignments in place and reports uncertainty. Once firmware
 facts exceed the configured freshness limit (15 seconds by default), readiness
 becomes UNKNOWN; missing refreshes do not imply two healthy WANs. Initial
 activation requires a successful complete observation.
 
-A stress test also exposed stdout/stderr interleaving when a larger native dump
+A stress test also exposed stdout/stderr interleaving when a larger firmware dump
 filled stdio buffers. The reader now keeps rows and completion output separate;
 completion uses an anonymous `/tmp` file in the worker. No dump or frequent
 state is written to flash.
@@ -71,7 +71,7 @@ The normal binary does not expose them.
 | Deliberately slow refresh | 360 admissions while refresh took about 1.56 seconds. All became observed without persistent uncertainty. |
 | Round trips during slow refresh | 72 measured UDP echo round trips, three batches of 24. Batch p95 at most 0.204 ms; maximum 0.290 ms. This is loopback evidence, not WAN throughput. |
 | Worker timeout | Packet admission continued while workers exceeded their deadline; failures were reported and prior state retained. |
-| Extended missing refresh | Both native WAN readiness values became UNKNOWN after the freshness limit; the existing source assignment remained intact. |
+| Extended missing refresh | Both firmware WAN readiness values became UNKNOWN after the freshness limit; the existing source assignment remained intact. |
 | Helper killed during collection | Queue closed, no running collector remained, and the next test cleanup removed its exact objects. |
 
 The production build was also exercised on the authorized macOS client, bound
@@ -82,7 +82,7 @@ Private test health fixtures drove the policy; the production watchdog was
 unchanged.
 
 Four concurrent fresh HTTPS requests, two bound DNS queries and two actual
-UDP/443 QUIC version negotiations passed in each of four states: native
+UDP/443 QUIC version negotiations passed in each of four states: firmware
 Primary, failed Primary/backup selected, recovery held on backup, and recovered
 Primary. The 16 HTTPS responses showed the expected public WAN address. A
 separate HTTPS connection remained idle for 25 seconds across the new-flow
@@ -115,11 +115,11 @@ the complete loopback suite.
   firewall rules are checked against the private backup. No public network
   dumps or credentials are included here.
 
-Private evidence includes original source, binaries, hashes, native packet
+Private evidence includes original source, binaries, hashes, firmware packet
 captures/status, client results and restoration checks. Wider installation
 remains disabled; the unrelated qualification gates in the prior report remain.
 
 Subsequent [mode-matrix checks](MODE-MATRIX-2026-10-15.md) repeated sticky
 failover/recovery using this final build and verified both modes forwarding
-with native readiness alone. The production watchdog stayed running; actual
-watchdog stop/restart and native-only outage/recovery remain deferred.
+with firmware readiness alone. The production watchdog stayed running; actual
+watchdog stop/restart and firmware-only outage/recovery remain deferred.

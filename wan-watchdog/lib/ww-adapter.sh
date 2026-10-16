@@ -38,7 +38,7 @@ init)
     ;;
 apply)
     mutations_allowed
-    # Fields are numeric argv from the native core, never shell expressions.
+    # Fields are numeric argv from the monitor core, never shell expressions.
     shift
     [ "$#" = 8 ] || exit 72
     for value in "$@"; do case "$value" in -1|0|1) ;; *) exit 72;; esac; done
@@ -110,7 +110,7 @@ cleanup) mutations_allowed;cleanup_owned;exit $?;;
 *) exit 72;;
 esac
 
-# A complete, bounded, allowlisted native-fact view; no NVRAM dump/secrets.
+# A complete, bounded, allowlisted router-fact view; no NVRAM dump/secrets.
 select_probe_targets || exit 74
 failed=$(read_number "$OWNERSHIP_DIR/whole-failover" -1)
 case "$failed" in 0|1) ;; *) failed=-1;; esac

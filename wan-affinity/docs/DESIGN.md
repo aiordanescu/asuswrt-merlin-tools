@@ -24,7 +24,7 @@ for the guarded rollout and remaining platform/throughput limits.
 
 The invariant/event discussion below describes the model contract. The live
 compatibility adapter conservatively observes events and relies on validated
-full lifecycle observations for retirement. It does not claim that native kernel IDs were delivered
+full lifecycle observations for retirement. It does not claim that firmware kernel IDs were delivered
 with queued packets.
 
 ## Correctness invariants
@@ -50,7 +50,7 @@ Router-kernel follow-up: the original NF_ACCEPT + following CONNMARK sequence
 below was disproved. NF_ACCEPT skips the rest of the current iptables hook.
 The successful loopback diagnostic used NF_REPEAT and a WAN-mark guard before
 queueing, then saved the mark on re-entry. This must be integrated carefully
-with production exclusions/native ordering; the schematic is not deployable.
+with production exclusions/firmware ordering; the schematic is not deployable.
 See [the kernel test report](ROUTER-TESTS-2026-10-14.md).
 
 All eligible unclassified first packets enter one serialized decision path; the
@@ -58,7 +58,7 @@ helper advertises its intent to reserve the source association *before* the
 packet is released.
 
 ```
-mangle PREROUTING (before the native `-j balance` jump)
+mangle PREROUTING (before the firmware `-j balance` jump)
   -i br0 -m state --state NEW -j WAN_AFFINITY_ADMIT
   WAN_AFFINITY_ADMIT: eligibility exclusions -> NFQUEUE --queue-num N [--queue-bypass]
   ... helper verdict carries the WAN mark ...
@@ -68,7 +68,7 @@ mangle PREROUTING (before the native `-j balance` jump)
 Why this is atomic per source: the helper runs a **single-threaded event loop**
 over the NFQUEUE fd and the conntrack event/dump sources. Two simultaneous
 first packets from one source are dequeued one after the other; the first
-creates the association, the second observes it. No userspace "native chooses,
+creates the association, the second observes it. No userspace "firmware chooses,
 then learn" window exists (that approach is rejected: two simultaneous first
 packets are chosen independently before any learning).
 
@@ -102,8 +102,8 @@ itself, not kernel/event timing.
 
 Two layers, never mixed:
 
-* **Native (standalone).** `wanN_enable`, `wanN_state_t` (2 = connected), a
-  valid lease/gateway/interface and route readiness. No probes. Native
+* **Firmware (standalone).** `wanN_enable`, `wanN_state_t` (2 = connected), a
+  valid lease/gateway/interface and route readiness. No probes. Firmware
   "connected" is link/DHCP level and is *not* a quality claim — on the inspected
   router `dns_probe=0` and `wan_dns_probe=0`.
 * **Enhanced (optional).** A versioned, atomically published `wan-watchdog`
@@ -114,13 +114,13 @@ Two layers, never mixed:
 
 Rules: an existing association is reassigned only when its WAN is **known
 unusable**; `unknown` retains it. New selections need an *eligible* WAN. When
-enhanced health disappears, native state takes over, but a previously excluded
+enhanced health disappears, firmware state takes over, but a previously excluded
 WAN stays excluded (UNKNOWN) until fresh recovery evidence or an explicit
-native-only switch. `eligible` is never equated with completed recovery.
+firmware-only switch. `eligible` is never equated with completed recovery.
 
 ## Rejected mechanisms (executable counter-examples)
 
-* **native-choice-then-learn** (`mechanisms.NativeThenLearn`): splits
+* **firmware-choice-then-learn** (`mechanisms.FirmwareThenLearn`): splits
   simultaneous first packets (test fails as designed).
 * **timer-only / packet-idle IP sets** (`mechanisms.TimeoutIpset`): expires a
   quiet but established connection (test fails as designed).

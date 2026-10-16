@@ -7,7 +7,7 @@ if [ "${WA_INSTALL_LOCK_HELD:-0}" != 1 ]; then
     flock -x 7
 fi
 for file in wan-affinity wan-affinity.sh hooks.sh wan-affinity.conf; do
-    [ -f "$BASE/previous/$file" ] || { echo 'No complete previous version; use wan-affinity.sh disable for native fallback.' >&2;exit 1; }
+    [ -f "$BASE/previous/$file" ] || { echo 'No complete previous version; use wan-affinity.sh disable for firmware fallback.' >&2;exit 1; }
 done
 sh "$BASE/wan-affinity.sh" stop 7>&-
 for file in wan-affinity wan-affinity.sh hooks.sh wan-affinity.conf; do

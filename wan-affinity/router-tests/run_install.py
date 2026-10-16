@@ -83,7 +83,7 @@ LAN_SCOPE=0
 SUPERVISE=0
 QUEUE_NUM=20880
 IDLE_SECONDS=0
-HEALTH_SOURCE=socket
+HEALTH_SOURCE=watchdog
 HEALTH_SOCKET=/tmp/wan-watchdog/health.sock
 '''
         ssh(f'cat >{base}/wan-affinity.conf <<\'CFG\'\n{cfg}CFG\n' + ctl + 'start\n')
@@ -98,7 +98,7 @@ HEALTH_SOCKET=/tmp/wan-watchdog/health.sock
         assert old != pid() and cfg == ssh(f'cat {base}/wan-affinity.conf\n')
         ready()
         # Installer fault injection: config validation succeeds, daemon launch
-        # fails. Only our scoped service is stopped; native routing stays live.
+        # fails. Only our scoped service is stopped; firmware routing stays live.
         ssh(f'cp -R {root}/bundle {root}/bad-bundle\ncat >{root}/bad-bundle/wan-affinity <<\'BAD\'\n#!/bin/sh\nfor arg in "$@";do [ "$arg" != --check-config ] || exit 0;done\nexit 1\nBAD\nchmod 700 {root}/bad-bundle/wan-affinity\n')
         output = ssh(f'if sh {root}/bad-bundle/install.sh --upgrade 2>&1;then exit 1;fi\n', timeout=60)
         assert 'restoring the previous version' in output, output

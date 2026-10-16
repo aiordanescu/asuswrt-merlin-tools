@@ -113,10 +113,10 @@ int main(void) {
         strcpy(f.ip, "127.0.0.1");
         strcpy(f.gw, "127.0.0.1");
         strcpy(f.ifname, "lo");
-        wa_health_set_native(&e, u, &f);
+        wa_health_set_firmware(&e, u, &f);
     }
     wa_health_feed feed;
-    wa_health_feed_init(&feed, &e, WA_HEALTH_SOCKET, path, dir);
+    wa_health_feed_init(&feed, &e, WA_HEALTH_WATCHDOG, path, dir);
     CHECK(wa_health_eligibility(&e, 0) == WA_UNKNOWN);
     state.wan[0].reason = WH_DEGRADED;
     state.wan[0].bad = state.wan[0].excluded = 1;
@@ -131,12 +131,12 @@ int main(void) {
     wa_health old = e.health;
     old.snap.state[0] = WA_ELIGIBLE;
     old.excluded[0] = 0;
-    wa_health_merge_native(&e, &old);
+    wa_health_merge_firmware(&e, &old);
     CHECK(wa_health_eligibility(&e, 0) == WA_UNUSABLE);
     wh_client_close(&feed.client, wh_now());
     wa_health_feed_init(&feed, &e, WA_HEALTH_AUTO, path, dir);
     CHECK(e.health.excluded[0]); /* Same-boot exclusion survived a helper restart. */
-    strcpy(e.health.native[0].ip, "127.0.0.3");
+    strcpy(e.health.firmware[0].ip, "127.0.0.3");
     state.wan[0].bad = state.wan[0].excluded = 0;
     state.wan[0].reason = WH_USABLE;
     state.wan[0].eligible = state.wan[0].acceptable = 1;

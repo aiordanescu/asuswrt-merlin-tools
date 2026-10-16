@@ -9,7 +9,7 @@ from __future__ import annotations
 from dataclasses import dataclass, field
 from typing import FrozenSet, Iterable, List, Optional, Sequence, Tuple
 
-# Native Merlin Load-Balance marks, confirmed read-only on the RT-AX88U:
+# Firmware Merlin Load-Balance marks, confirmed read-only on the RT-AX88U:
 #   WAN0 (eth0) -> 0x80000000, WAN1 (eth2) -> 0x90000000, mask 0xf0000000
 WAN0_MARK = 0x80000000
 WAN1_MARK = 0x90000000
@@ -86,7 +86,7 @@ def in_any(addr: str, cidrs: Iterable[str]) -> bool:
 
 @dataclass(frozen=True)
 class PinnedRule:
-    """A GUI source/destination pin.  Matched traffic is left to native routing."""
+    """A GUI source/destination pin.  Matched traffic is left to firmware routing."""
 
     wan: int
     src_cidr: Optional[str] = None
@@ -135,7 +135,7 @@ def packet_is_eligible(
     """Should this packet be classified by the component?
 
     Returns ``(eligible, reason)``.  Ineligible packets are left untouched for
-    native routing (GUI pins, local/VPN, incoming, already-marked).
+    firmware routing (GUI pins, local/VPN, incoming, already-marked).
     """
     if inbound:
         return False, "incoming"

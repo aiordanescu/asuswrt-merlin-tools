@@ -63,7 +63,7 @@ LAN_SCOPE=0
 SUPERVISE=1
 QUEUE_NUM=20880
 IDLE_SECONDS=0
-HEALTH_SOURCE=socket
+HEALTH_SOURCE=watchdog
 HEALTH_SOCKET=/tmp/wan-watchdog/health.sock
 '''
     ssh(f'cat >{base}/wan-affinity.conf <<\'CFG\'\n{config}CFG\n')
@@ -96,7 +96,7 @@ rmdir {root}/cleaning
     def download(label):
         rows = []
         for i in range(3):
-            port = 48000 + (0 if label == 'native' else 10) + i
+            port = 48000 + (0 if label == 'firmware' else 10) + i
             cmd = ['curl', '-4', '--interface', client, '--local-port', str(port),
                    '--max-time', '30', '-sS', '-o', '/dev/null', '-w', '%{json}',
                    'https://speed.cloudflare.com/__down?bytes=10000000']
@@ -108,7 +108,7 @@ rmdir {root}/cleaning
         record(label + '_downloads', {'bytes': sum(r['size_download'] for r in rows), 'seconds': sum(r['time_total'] for r in rows)})
 
     try:
-        download('native')
+        download('firmware')
         for bad in ['QUEUE_NUM=garbage', 'IDLE_SECONDS=nan', 'MODE=wrong', 'QUEUE_MAXLEN=99999']:
             ssh(f'cp {base}/wan-affinity.conf {root}/bad.conf\nprintf \'%s\\n\' {shlex.quote(bad)} >>{root}/bad.conf\n' +
                 f'if {base}/wan-affinity --config {root}/bad.conf --check-config >/dev/null 2>&1;then exit 1;fi\n')
@@ -127,7 +127,7 @@ else exec {real_iptables} "$@";fi
                 break
             time.sleep(.5)
         else:
-            raise AssertionError('boot retry did not start after native readiness returned')
+            raise AssertionError('boot retry did not start after firmware readiness returned')
         record('delayed_firewall_readiness_retried_automatically', True)
         pid = ssh(f'cat {run}/wan-affinity.pid\n').strip()
         with concurrent.futures.ThreadPoolExecutor(max_workers=4) as pool:

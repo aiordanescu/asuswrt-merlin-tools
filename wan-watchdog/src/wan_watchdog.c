@@ -258,7 +258,7 @@ static void status_file(const char *runtime, const wh_state *s, const wh_server 
         peers += server->peer[i].fd >= 0;
     fprintf(
         f,
-        "native=1 shadow=%d uptime_seconds=%llu mode=%s seq=%llu progress=%llu publisher_ready=%d "
+        "monitor=1 shadow=%d uptime_seconds=%llu mode=%s seq=%llu progress=%llu publisher_ready=%d "
         "subscribers=%u refresh_ok=%u refresh_failed=%u max_dispatch_delay_us=%llu "
         "routing_error=%u desired=%d applied=%d desired_generation=%llu applied_generation=%llu\n",
         shadow, (unsigned long long)(wh_now() / WH_NSEC), s->pinned ? "pinned" : "whole_lan",
@@ -282,8 +282,8 @@ static void status_file(const char *runtime, const wh_state *s, const wh_server 
 }
 static void cache(const char *runtime, ww_core *core, const uint8_t boot[16], int load) {
     char path[256], temp[256];
-    snprintf(path, sizeof path, "%s/native-health.cache", runtime);
-    snprintf(temp, sizeof temp, "%s/native-health.cache.new", runtime);
+    snprintf(path, sizeof path, "%s/monitor-health.cache", runtime);
+    snprintf(temp, sizeof temp, "%s/monitor-health.cache.new", runtime);
     uint8_t b[WH_MAX_FRAME];
     wh_state s;
     memset(&s, 0, sizeof s);
@@ -372,7 +372,7 @@ int main(int argc, char **argv) {
             printf("clk_tck=%ld\n", sysconf(_SC_CLK_TCK));
             return 0;
         } else {
-            fprintf(stderr, "usage: wan-watchdog-native --adapter PATH --legacy PATH "
+            fprintf(stderr, "usage: wan-watchdog --adapter PATH --legacy PATH "
                             "[--shadow|--active] [--run-dir DIR] [--ownership DIR] [--mode "
                             "whole_lan|pinned] [--duration SECONDS]\n");
             return 2;
@@ -412,7 +412,7 @@ int main(int argc, char **argv) {
     signal(SIGTERM, on_signal);
     signal(SIGINT, on_signal);
     signal(SIGPIPE, SIG_IGN);
-    monitor_log(LOG_INFO, "native monitor started; mode=%s shadow=%d",
+    monitor_log(LOG_INFO, "watchdog monitor started; mode=%s shadow=%d",
                 pinned ? "pinned" : "whole_lan", !active);
     snprintf(path, sizeof path, "%s/wan-watchdog.pid", runtime);
     FILE *pf = fopen(path, "w");
@@ -749,7 +749,7 @@ int main(int argc, char **argv) {
     snprintf(path, sizeof path, "%s/wan-watchdog.pid", runtime);
     unlink(path);
     close(lock);
-    monitor_log(LOG_INFO, "native monitor stopped; forwarding state preserved");
+    monitor_log(LOG_INFO, "watchdog monitor stopped; forwarding state preserved");
     if (log_fd >= 0)
         close(log_fd);
     return initialized ? 0 : 1;

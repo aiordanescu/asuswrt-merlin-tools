@@ -5,7 +5,7 @@
  *   - the NFQUEUE netlink fd        (serialized admission)
  *   - a nonblocking worker pipe    (complete U-then-C lifecycle snapshots)
  *
- * Only the bounded worker executes native-fact/conntrack commands. Admissions
+ * Only the bounded worker executes firmware-fact/conntrack commands. Admissions
  * and snapshot application remain serialized in the parent event loop.
  *
  * The decision engine lives in wa_engine.c and has no Linux dependency. This
@@ -13,7 +13,7 @@
  * the host test suite exercises wa_engine.c instead.
  *
  * Packet path (mangle table, owned chain WA_ADMIT, jumped to before the
- * native `-j balance` rule):
+ * firmware `-j balance` rule):
  *
  *   -A WA_ADMIT -m conntrack --ctstatus CONFIRMED -j RETURN
  *   -A WA_ADMIT -m connmark ! --mark 0x0/0xf0000000 -j RETURN
@@ -61,7 +61,7 @@
 #include <time.h>
 #include <unistd.h>
 
-#define WA_VERSION "0.4.0"
+#define WA_VERSION "0.4.1"
 static wa_health_feed health_feed;
 
 static volatile sig_atomic_t stopping;
@@ -192,8 +192,8 @@ static void config_load(wa_config *c, const char *path) {
         else if (!strcmp(k,"HEALTH_SOCKET")) snprintf(c->health_socket,sizeof c->health_socket,"%s",v);
         else if (!strcmp(k,"HEALTH_SOURCE")) {
             if(!strcmp(v,"auto"))c->health_source=WA_HEALTH_AUTO;
-            else if(!strcmp(v,"native"))c->health_source=WA_HEALTH_NATIVE;
-            else if(!strcmp(v,"socket"))c->health_source=WA_HEALTH_SOCKET;
+            else if(!strcmp(v,"firmware"))c->health_source=WA_HEALTH_FIRMWARE;
+            else if(!strcmp(v,"watchdog"))c->health_source=WA_HEALTH_WATCHDOG;
             else if(!strcmp(v,"legacy"))c->health_source=WA_HEALTH_LEGACY;
             else {fprintf(stderr,"invalid HEALTH_SOURCE\n");exit(2);}
         }
@@ -284,7 +284,7 @@ static void domain_from_router(wa_engine *e, const wa_config *c) {
         }
     }
     if(pclose(routes))die("local route read");
-    /* Preserve policy routing outside native WAN selection. For unfamiliar
+    /* Preserve policy routing outside firmware WAN selection. For unfamiliar
      * tables, exclude the complete source/destination selector even if the
      * rule also has a mark/interface condition. This can deliberately reduce
      * coverage, but cannot pull VPN traffic into a WAN table. */
@@ -301,7 +301,7 @@ static void domain_from_router(wa_engine *e, const wa_config *c) {
     if(pclose(routes))die("policy rule read");
 }
 
-static void native_health_from_router(wa_engine *e) {
+static void firmware_health_from_router(wa_engine *e) {
     for (int u = 0; u < 2; u++) {
         char key[32], v[64];
         wa_wan_facts f;
@@ -327,7 +327,7 @@ static void native_health_from_router(wa_engine *e) {
             }
             if(pclose(routes))f.route_ready=-1;
         } else f.route_ready=-1;
-        wa_health_set_native(e, u, &f);
+        wa_health_set_firmware(e, u, &f);
     }
 }
 
@@ -361,7 +361,7 @@ static void derive_affinity_seed(char *out, size_t len) {
 static void load_snapshot(wa_engine *e, const wa_config *c, double now) {
     FILE *f = fopen(c->snapshot_path, "r");
     if (!f) {
-        wa_health_apply_snapshot(e, NULL, now); /* no enhanced -> native; exclusions persist */
+        wa_health_apply_snapshot(e, NULL, now); /* no enhanced -> firmware; exclusions persist */
         return;
     }
     static char buf[4096];
@@ -514,7 +514,7 @@ static int collect_table(wa_engine *e,const wa_config *c,wa_ct_view *view,int un
         const char *source=strstr(line,"src=");
         if(family!=2 || (source && memchr(source+4,':',strcspn(source+4," \t\r\n"))))continue;
         wa_ct_record row;
-        int parsed=unconfirmed?wa_parse_unconfirmed_conntrack(line,&row):wa_parse_native_conntrack(line,&row);
+        int parsed=unconfirmed?wa_parse_unconfirmed_conntrack(line,&row):wa_parse_firmware_conntrack(line,&row);
         if(parsed<0 || ((proto==6 || proto==17) && !parsed)){bad=1;continue;}
         if(!parsed)continue;
         if((row.src&e->lan.mask)!=(e->lan.net&e->lan.mask))continue;
@@ -556,7 +556,7 @@ static int collect_observation(void *arg,void *result,size_t capacity) {
         while(nanosleep(&delay,&delay) && errno==EINTR){}
     }
 #endif
-    native_health_from_router(e);ratio_from_router(e);domain_from_router(e,c);
+    firmware_health_from_router(e);ratio_from_router(e);domain_from_router(e,c);
     if(e->mode==WA_AFFINITY && !e->affinity_seed[0])derive_affinity_seed(e->affinity_seed,sizeof e->affinity_seed);
     if(c->health_source==WA_HEALTH_LEGACY)load_snapshot(e,c,mono());
     o->health=e->health;o->domain=e->domain;o->lan=e->lan;
@@ -574,7 +574,7 @@ static int apply_observation(wa_engine *e,const wa_observation *o,double now) {
     }
     /* Enhanced socket state is parent-owned; an old worker cannot replace it. */
     if(health_feed.source==WA_HEALTH_LEGACY)e->health=o->health;
-    else wa_health_merge_native(e,&o->health);
+    else wa_health_merge_firmware(e,&o->health);
     wa_health_refresh(e,now);
     e->domain=o->domain;e->lan=o->lan;
     memcpy(e->weight,o->weight,sizeof e->weight);
@@ -612,7 +612,7 @@ static void write_status(wa_engine *e, const wa_config *c) {
         evidence_age_ms[u]=measured && health_now>=measured?(long long)((health_now-measured)/1000000):-1;
     }
     fprintf(f,"health_source=%s socket_connected=%d socket_seq=%llu socket_rejected=%u socket_published_ns=%llu\n",
-        c->health_source==WA_HEALTH_NATIVE?"native":c->health_source==WA_HEALTH_SOCKET?"socket":c->health_source==WA_HEALTH_LEGACY?"legacy":"auto",
+        c->health_source==WA_HEALTH_FIRMWARE?"firmware":c->health_source==WA_HEALTH_WATCHDOG?"watchdog":c->health_source==WA_HEALTH_LEGACY?"legacy":"auto",
         health_feed.client.connected,(unsigned long long)health_feed.client.state.seq,health_feed.client.rejected,(unsigned long long)health_feed.client.state.published_ns);
     fprintf(f,"socket_instance=%s evidence_age_ms=%lld/%lld publisher_reason=%s/%s publisher_excluded=%u/%u\n",instance,evidence_age_ms[0],evidence_age_ms[1],
         wh_reason_name(health_feed.client.state.wan[0].reason),wh_reason_name(health_feed.client.state.wan[1].reason),health_feed.client.state.wan[0].excluded,health_feed.client.state.wan[1].excluded);
@@ -655,7 +655,7 @@ static void run(wa_engine *e, wa_config *c) {
         double t=mono();
         wa_health_feed_step(&health_feed,e,wh_now());
         if(t-last_refresh_success>e->max_reconcile_age) {
-            for(int u=0;u<2;u++)e->health.native[u].route_ready=-1;
+            for(int u=0;u<2;u++)e->health.firmware[u].route_ready=-1;
             e->uncertain=1;snprintf(e->last_error,sizeof e->last_error,"stale-refresh");
         }
 #ifdef WA_TESTING

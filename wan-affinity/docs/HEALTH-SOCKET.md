@@ -4,14 +4,12 @@ Choose the health provider independently of the watchdog's implementation langua
 
 | Provider | `HEALTH_SOURCE` | Behavior |
 | --- | --- | --- |
-| **WAN Watchdog** | `socket` | Use measured watchdog health; fresh matching evidence is required for new eligibility |
-| **Router readiness** | `native` | Check interface, address, gateway, state and route readiness; no active Internet probes |
+| **WAN Watchdog** | `watchdog` | Use measured watchdog health; fresh matching evidence is required for new eligibility |
+| **Router readiness** | `firmware` | Check interface, address, gateway, state and route readiness; no active Internet probes |
 | Automatic (default) | `auto` | Discover WAN Watchdog when available; otherwise use router readiness while retaining known exclusions |
 | Older file adapter | `legacy` | Read the older textual snapshot at `SNAPSHOT_PATH` |
 
-Use `socket` with WAN Watchdog, including its C implementation. The value
-`native` refers to router-readiness checks. These are the existing configuration
-values; the provider labels above make their meaning explicit.
+Use `watchdog` with WAN Watchdog. Use `firmware` for the router's interface, address and routing checks.
 
 ## Socket integration details
 

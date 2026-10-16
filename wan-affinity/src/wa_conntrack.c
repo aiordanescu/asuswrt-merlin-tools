@@ -12,7 +12,7 @@ static int number(const char *text,unsigned long long max,uint64_t *out) {
     *out=value;return 0;
 }
 
-static int parse_native(const char *line,wa_ct_record *out,int unconfirmed) {
+static int parse_firmware(const char *line,wa_ct_record *out,int unconfirmed) {
     memset(out,0,sizeof *out);
     char work[1024];
     if(strlen(line)>=sizeof work)return -1;
@@ -39,8 +39,8 @@ static int parse_native(const char *line,wa_ct_record *out,int unconfirmed) {
     return bad || !src || !dst || !sp || !dp || (!unconfirmed && (!id || !out->kernel_id)) ? -1 : 1;
 }
 
-int wa_parse_native_conntrack(const char *line,wa_ct_record *out) {return parse_native(line,out,0);}
-int wa_parse_unconfirmed_conntrack(const char *line,wa_ct_record *out) {return parse_native(line,out,1);}
+int wa_parse_firmware_conntrack(const char *line,wa_ct_record *out) {return parse_firmware(line,out,0);}
+int wa_parse_unconfirmed_conntrack(const char *line,wa_ct_record *out) {return parse_firmware(line,out,1);}
 
 int wa_ct_view_add(wa_ct_view *view,const wa_ct_record *row) {
     const unsigned mask=WA_MAX_STATES*2-1;
@@ -59,11 +59,11 @@ int wa_ct_view_add(wa_ct_view *view,const wa_ct_record *row) {
 }
 
 int wa_ct_egress(const wa_ct_record *row,const wa_health *health) {
-    /* Native GUI source pins outrank fwmarks: an old pin can therefore leave a
+    /* Firmware GUI source pins outrank fwmarks: an old pin can therefore leave a
      * misleading WAN connmark. A confirmed SNAT reply address is better proof. */
     if(row->have_reply_dst)for(int u=0;u<2;u++) {
         uint32_t wan_ip;
-        if(!wa_parse_ipv4(health->native[u].ip,&wan_ip) && row->reply_dst==wan_ip)return u;
+        if(!wa_parse_ipv4(health->firmware[u].ip,&wan_ip) && row->reply_dst==wan_ip)return u;
     }
     return wa_wan_from_mark(row->mark);
 }

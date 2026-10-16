@@ -76,13 +76,13 @@ becomes clean, allow roughly **30 seconds to clear the loss history, then two
 clean minutes** before restoration. Restarting the daemon also resets that
 verification period but preserves active failover markers.
 
-The shell constants are near the top of [wan-watchdog.sh](wan-watchdog.sh).
-The native thresholds are compiled into [ww_core.c](src/ww_core.c) and match
+The shell constants are near the top of [wan-watchdog-legacy.sh](wan-watchdog-legacy.sh).
+The C monitor thresholds are compiled into [ww_core.c](src/ww_core.c) and match
 that reference; editing shell constants does not reconfigure the C classifier.
 
 ## Configuration and rule ownership
 
-Shell settings are near the top of [wan-watchdog.sh](wan-watchdog.sh). The mode and
+Shell settings are near the top of [wan-watchdog-legacy.sh](wan-watchdog-legacy.sh). The mode and
 routing settings also accept environment overrides in `services-start`:
 
 ```sh
@@ -130,7 +130,7 @@ written only when ownership changes, not on each successful probe.
 
 ### VPN, local traffic, DNS and probes
 
-Existing native rules remain present. For recognized VPN-client table lookups
+Existing firmware rules remain present. For recognized VPN-client table lookups
 (`ovpnc*`, `wgc*`, IDs 111–120) and destination-specific `main` rules at/after the
 override priority, priority-87 guards use the same selectors and jump to the
 original rule priority. This lets the original VPN policy and its route table
@@ -138,7 +138,7 @@ make the decision; priority 88 does not silently overtake those VPN rules.
 
 The failover table has explicit healthy-WAN routes, avoiding inherited WAN-table
 DNS host routes. It uses `throw` routes for directly connected and VPN prefixes,
-so local-network destinations fall through to the native routing policies.
+so local-network destinations fall through to the firmware routing policies.
 Router-originated traffic to configured resolver addresses gets separate
 `iif lo` overrides. The tested kernel ignores newer port selectors, so these
 match resolver **addresses**, not only ports 53/853; other router-originated
@@ -157,9 +157,9 @@ ICMP on both WANs in your network.
 Before probing, `ip route get` must report the expected interface. Invalid
 routing yields an unknown sample; missing IPv4 leases yield losses. DNS- or
 HTTPS-only failures are not independent WAN failure triggers. An exclusive
-`flock` prevents duplicate daemons. The shell uses `/proc/uptime`; the native
+`flock` prevents duplicate daemons. The shell uses `/proc/uptime`; the C
 monitor uses monotonic timers and cross-checks suspend gaps. Status is replaced
-atomically; the socket is the native live-health interface.
+atomically; the socket publishes the watchdog’s live health.
 
 ## Shell installation and upgrade
 
@@ -172,7 +172,7 @@ Upload the source from this repository's root. Older Merlin installations lack
 an SFTP subsystem, so `scp -O` selects the legacy SCP protocol:
 
 ```sh
-scp -O wan-watchdog/wan-watchdog.sh router:/tmp/wan-watchdog.new
+scp -O wan-watchdog/wan-watchdog-legacy.sh router:/tmp/wan-watchdog.new
 scp -O wan-watchdog/wan-watchdog-ddns.sh router:/tmp/wan-watchdog-ddns.new
 ```
 
@@ -226,7 +226,7 @@ Merge [inadyn.postconf.example](inadyn.postconf.example) into
 `/jffs/scripts/inadyn.postconf`, before any existing early `exit`. **Keep your
 existing commands**, especially provider-specific fixes. Make the hook executable.
 The marker comment identifies the integration; keep it together with the helper
-call. If you omit the helper or this integration, DDNS stays under native control.
+call. If you omit the helper or this integration, DDNS stays under firmware control.
 
 Merge the command from [services-start.example](services-start.example) into
 `/jffs/scripts/services-start` before any unconditional `exit`. If the hook is
@@ -279,7 +279,7 @@ on reboot. Decision logs are in `/tmp/syslog.log` and are also volatile.
 For a C-to-shell rollback, use the saved reference and shared ledger:
 
 ```sh
-sh /jffs/wan-watchdog-native/rollback.sh --rollback
+sh /jffs/wan-watchdog/service/rollback.sh --rollback
 ```
 
 That preserves forwarding state and restores the original entry point.
@@ -298,7 +298,7 @@ script and its current settings**:
 The command acquires the same daemon lock and refuses cleanup while it is
 running. It removes exact recorded rules and leased table contents, preserving
 unrelated priority-88 rules. It also withdraws its DDNS Auto selection and asks
-the native updater to regenerate its configuration when needed. Then set `backup` to your saved path and restore:
+the firmware updater to regenerate its configuration when needed. Then set `backup` to your saved path and restore:
 
 ```sh
 cp -p "$backup/wan-watchdog" /jffs/scripts/wan-watchdog.rollback
@@ -326,7 +326,7 @@ validation, partial routing errors, rolling samples, warm-up, timing jitter,
 whole-LAN decisions, persistent ownership, collision refusal, exact cleanup,
 VPN guards, LAN discovery and DNS/probe separation. DDNS tests cover UI Auto
 versus fixed selections, both switch directions, recovery reset, public-address
-eligibility, native provider callbacks, DNS confirmation, postconf preservation,
+eligibility, firmware provider callbacks, DNS confirmation, postconf preservation,
 provider-route ownership, and probe/cleanup coexistence:
 
 ```sh
@@ -334,7 +334,7 @@ python3 -m unittest discover -s wan-watchdog/tests
 ```
 
 Run the same mock-based tests on a router shell against the installed **shell
-reference** (not the native startup wrapper):
+reference** (not the C monitor startup wrapper):
 
 ```sh
 WAN_WATCHDOG_TEST_ROUTER=router \
@@ -344,7 +344,7 @@ python3 -m unittest discover -s wan-watchdog/tests
 ```
 
 When the C monitor is installed, set `WAN_WATCHDOG_TEST_SCRIPT` to
-`/jffs/wan-watchdog-native/wan-watchdog-legacy.sh` instead. C and
+`/jffs/wan-watchdog/service/wan-watchdog-legacy.sh` instead. C and
 socket tests/build commands are in the [watchdog guide](GUIDE.md); see
 [the qualification report](QUALIFICATION-2026-10-15.md) for the complete evidence.
 
@@ -352,7 +352,7 @@ These shell tests use temporary directories and mock routing/probes; they do not
 change live WANs or client rules. Python 3.8+ runs the harness on the host;
 Python is not needed on the router. The shell monitor needs Merlin's `nvram`, `ip`, BusyBox `ping`, `awk`,
 `flock`, and `logger`. The C monitor sends ICMP directly; its routing worker
-still uses the firmware's shell utilities. DDNS also needs native Inadyn,
+still uses the firmware's shell utilities. DDNS also needs firmware Inadyn,
 `service`, `sleep`, and `nslookup`; lookups are bounded without a `timeout` utility.
 
 The same 65 tests passed on the router's BusyBox shell. A real primary outage
@@ -389,14 +389,14 @@ movement to a healthy public WAN can occur sooner if the current destination
 itself fails; ordinary return still requires sustained recovery. DDNS Auto
 selection persists across watchdog restarts, while its recovery timer starts
 over. Both WANs bad/unmeasured means no new publication request. If Auto has no
-public WAN candidates, the native behavior is left in place.
+public WAN candidates, the firmware behavior is left in place.
 
 Stock Auto selects the first WAN the firmware regards as connected with a
 public address; it does not know this watchdog's packet-loss decision. We keep
-the native updater, credentials, provider implementation, and success callback.
+the firmware updater, credentials, provider implementation, and success callback.
 The postconf hook changes only its address source and interface when the UI is
-Auto. Neither `ddns_wan_unit` nor native primary flags are rewritten. The GUI's
-native last-WAN indicator can reflect the firmware's original selection; the
+Auto. Neither `ddns_wan_unit` nor firmware primary flags are rewritten. The GUI's
+firmware last-WAN indicator can reflect the firmware's original selection; the
 watchdog status shows the effective selection and address.
 
 The helper resolves the provider's IPv4 update endpoints through the router's
@@ -406,11 +406,11 @@ request off the degraded WAN without rerouting other router traffic. They
 remain while Auto is managed, refresh with endpoint resolution, and are removed
 when a fixed UI choice is detected or on cleanup. Requests retry at most once
 per minute, do not interrupt a running Inadyn process, and run outside the
-probe loop. The integration invalidates only the selected hostname's native
+probe loop. The integration invalidates only the selected hostname's firmware
 cache to bypass the firmware's pre-hook no-change check.
 
-The status distinguishes an update request, native provider success, and public
-DNS confirmation. Success requires the native success flag **and the expected
+The status distinguishes an update request, firmware provider success, and public
+DNS confirmation. Success requires the firmware success flag **and the expected
 published address**. A bounded background check then asks Cloudflare/Google
 resolvers for the hostname's A record. Cached DNS can take time to reflect an
 update; lack of DNS confirmation alone does not repeatedly resend an already
@@ -419,34 +419,34 @@ successful provider update. This verifies publication, not inbound reachability.
 ### DDNS scope and limitations
 
 - This release handles **IPv4-only networks with directly assigned public WAN
-  IPv4 addresses**. An active IPv6 service leaves DDNS under native control.
+  IPv4 addresses**. An active IPv6 service leaves DDNS under firmware control.
 - Private WANs, CGNAT, and modem-NAT WANs needing external-address discovery are
   not Auto destinations. The watchdog does not guess whether an externally
   discovered address accepts incoming traffic. For example, T-Mobile CGNAT
   does not become an inbound backup by changing DDNS.
-- Supported native providers: Namecheap, No-IP, DynDNS, Cloudflare, ZoneEdit,
+- Supported firmware providers: Namecheap, No-IP, DynDNS, Cloudflare, ZoneEdit,
   EasyDNS, DNS-O-Matic, Selfhost, FreeDNS, FreeMyIP, DNSPod, and basic ASUS DDNS
   (`.com`/`.cn`). Account-bound ASUS replacement/token profiles, Custom/Oray,
-  unknown providers and custom `inadyn.conf` / `inadyn.conf.add` files stay native.
+  unknown providers and custom `inadyn.conf` / `inadyn.conf.add` files stay firmware.
   Endpoint mappings come from the tested firmware's provider code and need
   review on upgrades. Arbitrary other postconf rewrites are not validated.
 - The normal generated single-provider Inadyn configuration is required. The
   supplied hook preserves provider credentials and URL adjustments in place;
   it creates no additional credentials file and never prints credentials.
 - When a user changes Auto to a fixed interface, our selection/provider routes
-  are withdrawn and native regeneration is requested. No WAN service restarts
+  are withdrawn and firmware regeneration is requested. No WAN service restarts
   or changes to physical WAN assignments occur.
 - This does **not** move port forwards, VPN listeners, or fix incoming reply
   routing. A hostname pointing to the backup does not establish that its
   services are reachable there; configure/verify that separately.
-- Native periodic DDNS verification can also request redundant refreshes because
+- Firmware periodic DDNS verification can also request redundant refreshes because
   its Auto selection is still based on firmware connection status.
 - The separate Namecheap checker is unchanged. With Auto and two public WANs,
-  its older primary-based verification can request redundant native refreshes;
+  its older primary-based verification can request redundant firmware refreshes;
   the postconf hook still supplies the watchdog-selected address. This does
   not affect a fixed Primary/Secondary setting.
 - If changing `STATE_DIR` or `OWNERSHIP_DIR`, supply the same paths to the helper
-  in the postconf call as to the daemon. Native service hooks do not inherit
+  in the postconf call as to the daemon. Firmware service hooks do not inherit
   your daemon's environment. Default paths need no extra configuration.
 
 Additional status and logs:

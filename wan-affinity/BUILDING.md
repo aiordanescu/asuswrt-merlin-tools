@@ -47,7 +47,7 @@ Never install the test executable as the persistent service.
 /tmp/wan-affinity.lock                 controller lock; stable inode outside runtime dir
 ```
 
-The controller requires `flock`, `iptables`, `conntrack`, native dual-WAN load
+The controller requires `flock`, `iptables`, `conntrack`, firmware dual-WAN load
 balancing, and NFQUEUE support. It refuses foreign chain/queue ownership and
 requires a valid initial connection view before activation. On the tested
 firmware, NFQUEUE does not supply connection IDs, so validated complete original

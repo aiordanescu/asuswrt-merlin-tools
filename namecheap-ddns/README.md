@@ -55,7 +55,7 @@ Keep Host Name = home and Domain Name = example.com. Putting the full domain int
 
 **3. Restarting DDNS does not necessarily force an update.**
 
-The native updater can return early when the WAN address, provider, hostname, and existing cache still match. This occurred even after the watchdog logged a daily forced refresh. Removing the volatile inadyn cache before requesting the update bypasses that check.
+The firmware updater can return early when the WAN address, provider, hostname, and existing cache still match. This occurred even after the watchdog logged a daily forced refresh. Removing the volatile inadyn cache before requesting the update bypasses that check.
 
 This cache behavior is broader than Namecheap. The missing-IP and split-hostname issues are the parts relevant to the Namecheap/Dual WAN combination.
 
@@ -64,7 +64,7 @@ This cache behavior is broader than Namecheap. The missing-IP and split-hostname
 There are two small scripts:
 
 - inadyn.postconf adds &ip=%i whenever Merlin generates the Namecheap configuration. It is idempotent and only applies to Namecheap.
-- namecheap-ddns-check verifies the full public name and requests a native update after clearing stale cache if the record differs from the selected public WAN IPv4, or the configured forced-refresh interval is due.
+- namecheap-ddns-check verifies the full public name and requests a firmware update after clearing stale cache if the record differs from the selected public WAN IPv4, or the configured forced-refresh interval is due.
 
 The cron scheduler starts the checker every five minutes. The checker stores its last check time and exits immediately until the configured verification interval has elapsed, with a minimum of 30 minutes. With a 30-minute verification interval, that means a DNS lookup roughly every 30 minutes, not every five minutes. A healthy record causes no update unless the daily refresh is due.
 
@@ -141,9 +141,9 @@ The --check-now option bypasses the interval timer; it does not unconditionally 
 
 ## Validation and monitoring
 
-On the tested router, the checker detected the mismatch, cleared the cache, and invoked the native updater. The logs confirmed that inadyn.postconf ran and that the generated URL included &ip=%i.
+On the tested router, the checker detected the mismatch, cleared the cache, and invoked the firmware updater. The logs confirmed that inadyn.postconf ran and that the generated URL included &ip=%i.
 
-A separate primary-WAN HTTPS update returned ErrCount=0, Done=true, and the expected public IPv4. A native inadyn --once --force run also completed successfully with that IP. Both Namecheap authoritative nameservers, Cloudflare DNS, and Google DNS subsequently returned the primary WAN address. A further checker run requested no additional update.
+A separate primary-WAN HTTPS update returned ErrCount=0, Done=true, and the expected public IPv4. A firmware inadyn --once --force run also completed successfully with that IP. Both Namecheap authoritative nameservers, Cloudflare DNS, and Google DNS subsequently returned the primary WAN address. A further checker run requested no additional update.
 
 Useful checks from the router shell:
 
@@ -157,7 +157,7 @@ nslookup home.example.com 8.8.8.8
 
 Replace example.com in those diagnostic commands with your own domain. The scripts themselves derive it from the GUI.
 
-The native client's short-name resolution warning for home can still appear. The additional verifier checks the full name.
+The firmware client's short-name resolution warning for home can still appear. The additional verifier checks the full name.
 
 ## Scope and limitations
 

@@ -38,8 +38,8 @@ RECONCILE_INTERVAL=2
 AFFINITY_SEED=
 
 # auto: discover WAN Watchdog; otherwise router readiness, retaining exclusions.
-# socket: WAN Watchdog. Require fresh matching watchdog health for new eligibility.
-# native: Router readiness. Interface/address/gateway/state/routes; no active probes.
+# watchdog: WAN Watchdog. Require fresh matching watchdog health for new eligibility.
+# firmware: Router readiness. Interface/address/gateway/state/routes; no active probes.
 # legacy: Older textual snapshot compatibility.
 HEALTH_SOURCE=auto
 HEALTH_SOCKET=/tmp/wan-watchdog/health.sock

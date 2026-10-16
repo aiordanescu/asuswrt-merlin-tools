@@ -5,7 +5,7 @@ This archive contains static binaries; no compiler or Python is needed on the
 router. Source and licensing: https://github.com/aiordanescu/asuswrt-merlin-tools
 
 Prebuilt downloads and checksums:
-https://github.com/aiordanescu/asuswrt-merlin-tools/releases/tag/wan-tools-2026.10.15-beta.2
+https://github.com/aiordanescu/asuswrt-merlin-tools/releases/tag/wan-tools-2026.10.15-beta.3
 Verify the downloaded archive against `SHA256SUMS` on your computer before
 transferring it. Building from source remains optional; the complete guide
 below retains those instructions.
@@ -20,9 +20,9 @@ https://github.com/aiordanescu/asuswrt-merlin-tools/blob/main/wan-watchdog/GUIDE
 After the documented preparation, run from this extracted directory:
 
 ```sh
-sh install-native.sh --install
+sh install.sh --install
 /jffs/scripts/wan-watchdog status
-/jffs/wan-watchdog-native/wan-healthctl
+/jffs/wan-watchdog/service/wan-healthctl
 ```
 
 The installer retains the routing ownership ledger, preserves existing hooks,
@@ -30,7 +30,7 @@ and arms an independent rollback guard. Keep one routing owner. Restore the
 saved shell implementation with:
 
 ```sh
-sh /jffs/wan-watchdog-native/rollback.sh --rollback
+sh /jffs/wan-watchdog/service/rollback.sh --rollback
 ```
 
 Normal stop preserves forwarding state; explicit cleanup is separate.

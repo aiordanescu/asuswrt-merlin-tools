@@ -6,9 +6,9 @@ aarch64. These checks used the unchanged normal ARM build from the
 the authorized Mac mini's home-LAN IPv4 address.
 
 **The latest sticky failover/recovery retest passed. Both policies also passed
-healthy native-only operation without watchdog health data.** The production
+healthy firmware-only operation without watchdog health data.** The production
 watchdog remained active throughout. This does not qualify an actual watchdog
-stop/restart or native outage/recovery without enhanced health data.
+stop/restart or firmware outage/recovery without enhanced health data.
 
 ## Passing matrix
 
@@ -21,15 +21,15 @@ modem interface could not substitute for router forwarding.
 | Policy and health input | Expected and observed egress |
 | --- | --- |
 | Sticky, original GUI Primary pin intact, absent snapshot | Primary; helper passed pinned traffic without creating an association. |
-| Sticky, unpinned, absent snapshot | Primary; helper actively admitted traffic using native readiness. |
-| Affinity, unpinned, absent snapshot | Primary, its configured preferred WAN; helper actively admitted traffic using native readiness. |
+| Sticky, unpinned, absent snapshot | Primary; helper actively admitted traffic using firmware readiness. |
+| Affinity, unpinned, absent snapshot | Primary, its configured preferred WAN; helper actively admitted traffic using firmware readiness. |
 | Sticky, private snapshot: both eligible | Primary. |
 | Sticky, private snapshot: Primary unusable | Backup for fresh traffic. |
 | Sticky, private snapshot: Primary recovery held | Backup retained. |
 | Sticky, private snapshot: Primary eligible again | Backup retained while the source still had relevant tracked connections. |
 
 All **56 checks passed** in the final guarded run: 28 HTTPS requests, 14 DNS
-queries and 14 QUIC version negotiations. Both native-only cases reported
+queries and 14 QUIC version negotiations. Both firmware-only cases reported
 `enhanced=no`, an adopted source association, successful admissions, no refresh
 failures and no uncertainty. Their snapshot path was a deliberately absent
 file in the private test directory, rather than the watchdog's runtime path.
@@ -45,7 +45,7 @@ small forwarding sample is not a throughput or latency bound.
 An early attempt encountered a TLS reset. Inspection showed mixed-WAN states
 and the helper's conservative transitional pass-through, so it was not counted
 as a successful helper-routing test. Between helper restarts, temporarily
-removing the pin had allowed native load balancing to admit background traffic
+removing the pin had allowed firmware load balancing to admit background traffic
 on different WANs. This is a test setup limitation, not evidence qualifying
 mixed-state restart adoption.
 
@@ -76,7 +76,7 @@ loss in the production watchdog's status.
   policies, with a separately scheduled window and independent timed restart.
   Check snapshot loss/staleness, retained exclusions/assignments and publisher
   return. See the [integration test note](INTEGRATION.md#deferred-live-watchdog-stop-check).
-- [ ] Native-only outage and recovery: the native-only rows above cover
+- [ ] Firmware-only outage and recovery: the firmware-only rows above cover
   healthy readiness and forwarding, not an actual failed link or route.
 
 The earlier wider-rollout gates remain: throughput/offload, reboot/firewall/

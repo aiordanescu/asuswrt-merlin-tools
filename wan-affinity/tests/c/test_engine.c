@@ -53,7 +53,7 @@ static void base_engine(wa_engine *e, wa_mode mode, const char *seed) {
     wa_domain_set_lan(e, ip("192.168.1.0"), ip("255.255.255.0"));
 }
 
-static void set_native(wa_engine *e, int unit, int up) {
+static void set_firmware(wa_engine *e, int unit, int up) {
     wa_wan_facts f;
     memset(&f, 0, sizeof f);
     f.enable = 1;
@@ -62,12 +62,12 @@ static void set_native(wa_engine *e, int unit, int up) {
     snprintf(f.gw, sizeof f.gw, "%s", unit == 0 ? "203.0.113.1" : "198.51.100.1");
     snprintf(f.ifname, sizeof f.ifname, "%s", unit == 0 ? "eth0" : "eth2");
     f.route_ready = 1;
-    wa_health_set_native(e, unit, &f);
+    wa_health_set_firmware(e, unit, &f);
 }
 
 static void both_up(wa_engine *e) {
-    set_native(e, 0, 1);
-    set_native(e, 1, 1);
+    set_firmware(e, 0, 1);
+    set_firmware(e, 1, 1);
 }
 
 static void test_simultaneous_first_connections(void) {
@@ -208,13 +208,13 @@ static void test_affinity_returns_to_preference(void) {
         if (e.assoc[i].src == src) a = &e.assoc[i];
     CHECK(a && a->preferred == 0, "preference recorded");
 
-    set_native(&e, 0, 0);
-    set_native(&e, 1, 1);
+    set_firmware(&e, 0, 0);
+    set_firmware(&e, 1, 1);
     wa_admission r2 = wa_admission_decision(&e, 2.0, src, ip("1.1.1.1"), 6, 2000, 80, 0, 2000);
     CHECK(r2.wan == 1, "temporary failover to WAN1");
     CHECK(a->preferred == 0, "preference held through failure");
 
-    set_native(&e, 0, 1);
+    set_firmware(&e, 0, 1);
     wa_admission r3 = wa_admission_decision(&e, 3.0, src, ip("1.1.1.1"), 6, 3000, 80, 0, 3000);
     CHECK(r3.wan == 0, "returned to persistent preference");
     CHECK(strcmp(a->reason, "affinity-return") == 0, "reason is affinity-return");
@@ -225,16 +225,16 @@ static void test_sticky_does_not_return(void) {
     base_engine(&e, WA_STICKY, NULL);
     both_up(&e);
     uint32_t src = ip("192.168.1.40");
-    set_native(&e, 1, 0);
+    set_firmware(&e, 1, 0);
     wa_admission r1 = wa_admission_decision(&e, 1.0, src, ip("93.184.216.34"), 6, 1000, 443, 0, 1);
     CHECK(r1.wan == 0, "placed on WAN0");
 
-    set_native(&e, 0, 0);
-    set_native(&e, 1, 1);
+    set_firmware(&e, 0, 0);
+    set_firmware(&e, 1, 1);
     wa_admission r2 = wa_admission_decision(&e, 2.0, src, ip("93.184.216.34"), 6, 1001, 443, 0, 2);
     CHECK(r2.wan == 1, "failed over to WAN1");
 
-    set_native(&e, 0, 1);
+    set_firmware(&e, 0, 1);
     wa_admission r3 = wa_admission_decision(&e, 3.0, src, ip("93.184.216.34"), 6, 1002, 443, 0, 3);
     CHECK(r3.wan == 1, "sticky retains the backup after recovery");
 }
@@ -329,8 +329,8 @@ static void test_snapshot_expiry_and_recovery_admission(void) {
     wa_health_refresh(&e,116);
     CHECK(!e.health.enhanced,"old snapshot expires by publication time");
     CHECK(wa_health_eligibility(&e,0)==WA_UNKNOWN,"stale excluded WAN not readmitted");
-    set_native(&e,1,0);
-    CHECK(wa_health_eligibility(&e,1)==WA_UNUSABLE,"native disconnection is authoritative");
+    set_firmware(&e,1,0);
+    CHECK(wa_health_eligibility(&e,1)==WA_UNUSABLE,"firmware disconnection is authoritative");
 }
 
 static void test_transitional_source_recovers_after_complete_idle(void) {
@@ -399,17 +399,17 @@ static void test_exact_tuple_snapshot_confirmation(void) {
     CHECK(wa_flow_token(&e,6,src,dst,50000,443)!=token,"reused tuple gets a fresh token after retirement");
 }
 
-static void test_native_conntrack_rows_and_actual_egress(void) {
+static void test_firmware_conntrack_rows_and_actual_egress(void) {
     const char *line="ipv4 2 tcp 6 1471 ESTABLISHED src=192.168.1.51 dst=52.110.2.81 sport=46752 dport=443 src=52.110.2.81 dst=198.51.100.2 sport=443 dport=46752 [ASSURED] mark=2147483648 use=1 id=780278320\n";
     wa_ct_record r;wa_engine e;base_engine(&e,WA_STICKY,NULL);both_up(&e);
-    CHECK(wa_parse_native_conntrack(line,&r)==1,"native extended,id row parsed");
+    CHECK(wa_parse_firmware_conntrack(line,&r)==1,"firmware extended,id row parsed");
     CHECK(r.src==ip("192.168.1.51") && r.dst==ip("52.110.2.81") && r.sport==46752 && r.dport==443,"original tuple independent of reply tuple");
-    CHECK(r.kernel_id==780278320 && r.mark==WA_WAN0_MARK,"full native ID and unsigned WAN mark preserved");
+    CHECK(r.kernel_id==780278320 && r.mark==WA_WAN0_MARK,"full firmware ID and unsigned WAN mark preserved");
     CHECK(wa_ct_egress(&r,&e.health)==1,"confirmed SNAT egress overrides misleading GUI-pinned connmark");
-    CHECK(wa_parse_native_conntrack("ipv4 2 tcp 6 src=192.168.1.51 dst=1.1.1.1 sport=1234 dport=443 id=2 zone=5",&r)<0,"non-default conntrack zones refused");
-    CHECK(wa_parse_native_conntrack("ipv4 2 tcp 6 src=192.168.1.51 dst=1.1.1.1 sport=99999 dport=443 id=2",&r)<0,"out-of-range tuple ports refused");
-    CHECK(wa_parse_native_conntrack("ipv4 2 udp 17 src=192.168.1.51 dst=1.1.1.1 sport=1234 dport=443",&r)<0,"incomplete native row refused");
-    CHECK(wa_parse_native_conntrack("ipv4 2 icmp 1 src=192.168.1.51 dst=1.1.1.1 id=2",&r)==0,"unmanaged protocol ignored");
+    CHECK(wa_parse_firmware_conntrack("ipv4 2 tcp 6 src=192.168.1.51 dst=1.1.1.1 sport=1234 dport=443 id=2 zone=5",&r)<0,"non-default conntrack zones refused");
+    CHECK(wa_parse_firmware_conntrack("ipv4 2 tcp 6 src=192.168.1.51 dst=1.1.1.1 sport=99999 dport=443 id=2",&r)<0,"out-of-range tuple ports refused");
+    CHECK(wa_parse_firmware_conntrack("ipv4 2 udp 17 src=192.168.1.51 dst=1.1.1.1 sport=1234 dport=443",&r)<0,"incomplete firmware row refused");
+    CHECK(wa_parse_firmware_conntrack("ipv4 2 icmp 1 src=192.168.1.51 dst=1.1.1.1 id=2",&r)==0,"unmanaged protocol ignored");
 }
 
 static void test_netlink_unpadded_final_packet(void) {
@@ -461,9 +461,9 @@ static void test_unconfirmed_rows_and_migration_union(void) {
     const char *unconfirmed="udp 17 0 src=192.168.1.51 dst=1.1.1.1 sport=63000 dport=443 src=1.1.1.1 dst=192.168.1.51 sport=443 dport=63000 mark=0 use=1\n";
     const char *confirmed="ipv4 2 udp 17 30 src=192.168.1.51 dst=1.1.1.1 sport=63000 dport=443 src=1.1.1.1 dst=203.0.113.2 sport=443 dport=63000 mark=2147483648 use=1 id=77\n";
     CHECK(wa_parse_unconfirmed_conntrack(unconfirmed,&u)==1 && u.unconfirmed && !u.kernel_id,"firmware U dump without extended ID supported explicitly");
-    CHECK(wa_parse_native_conntrack(unconfirmed,&c)<0,"confirmed dump still requires complete ID metadata");
+    CHECK(wa_parse_firmware_conntrack(unconfirmed,&c)<0,"confirmed dump still requires complete ID metadata");
     CHECK(!wa_ct_view_add(&view,&u) && view.count==1,"unconfirmed tuple included in lifecycle view");
-    CHECK(wa_parse_native_conntrack(confirmed,&c)==1 && !wa_ct_view_add(&view,&c),"U-to-C migration merged");
+    CHECK(wa_parse_firmware_conntrack(confirmed,&c)==1 && !wa_ct_view_add(&view,&c),"U-to-C migration merged");
     CHECK(view.count==1 && !view.rows[0].unconfirmed && view.rows[0].reply_dst==ip("203.0.113.2"),"migration keeps one tuple with confirmed NAT evidence");
     CHECK(!wa_ct_view_add(&view,&u) && !view.rows[0].unconfirmed,"duplicate U record cannot erase confirmed attribution");
     CHECK(wa_parse_unconfirmed_conntrack("udp 17 0 src=192.168.1.51 dst=1.1.1.1",&u)<0,"partial U tuple refused");
@@ -471,8 +471,8 @@ static void test_unconfirmed_rows_and_migration_union(void) {
 
 static void test_policy_exclusions(void) {
     uint32_t s,sm,d,dm;
-    CHECK(!wa_policy_exclusion("150: from all fwmark 0x80000000/0xf0000000 lookup wan0\n",&s,&sm,&d,&dm),"native WAN marks retain affinity coverage");
-    CHECK(!wa_policy_exclusion("90: from all to 10.6.0.2 lookup main\n",&s,&sm,&d,&dm),"main routing remains native");
+    CHECK(!wa_policy_exclusion("150: from all fwmark 0x80000000/0xf0000000 lookup wan0\n",&s,&sm,&d,&dm),"firmware WAN marks retain affinity coverage");
+    CHECK(!wa_policy_exclusion("90: from all to 10.6.0.2 lookup main\n",&s,&sm,&d,&dm),"main routing remains firmware");
     CHECK(wa_policy_exclusion("1000: from 192.168.1.50 to 203.0.113.0/24 lookup ovpnc1\n",&s,&sm,&d,&dm)==1 && s==ip("192.168.1.50") && sm==0xffffffffu && d==ip("203.0.113.0") && dm==0xffffff00u,"VPN selectors projected conservatively");
     CHECK(wa_policy_exclusion("1000: from all fwmark 0x10000/0xff0000 lookup wgc1\n",&s,&sm,&d,&dm)==1 && !sm && !dm,"unknown full-tunnel mark policy bypasses all sources");
     CHECK(wa_policy_exclusion("86: from 203.0.113.1 to 8.8.8.8 lookup 20186\n",&s,&sm,&d,&dm)==1 && s==ip("203.0.113.1") && d==ip("8.8.8.8"),"watchdog probes exclude only their own selectors");
@@ -492,7 +492,7 @@ static void test_live_unpin_adoption_retains_failover_decision(void) {
     e.domain.n_pins=0;
     wa_reconstruct(&e);
     CHECK(find_assoc(&e,src) && find_assoc(&e,src)->wan==1,"live unpin adopts surviving WAN instead of randomizing");
-    set_native(&e,1,0);
+    set_firmware(&e,1,0);
     wa_admission r=wa_admission_decision(&e,3,src,0x08080808u,6,61001,443,0,2);
     CHECK(r.action==WA_ACT_MARK && r.wan==0,"new flow fails over while old flow remains");
     wa_reconstruct(&e);
@@ -519,7 +519,7 @@ int main(void) {
     test_invalid_dump_never_uses_old_empty_confirmation();
     test_full_state_table_retains_pending();
     test_exact_tuple_snapshot_confirmation();
-    test_native_conntrack_rows_and_actual_egress();
+    test_firmware_conntrack_rows_and_actual_egress();
     test_netlink_unpadded_final_packet();
     test_complete_lifecycle_view_protects_held_and_cleans_terminal();
     test_async_snapshot_cutoff_and_failed_view();

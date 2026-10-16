@@ -54,12 +54,12 @@ typedef struct {
 } wa_snapshot;
 
 typedef struct {
-    wa_wan_facts native[2];
+    wa_wan_facts firmware[2];
     wa_snapshot snap;
     int have_snap;
     double snap_mono;
     int enhanced;
-    int native_policy;
+    int firmware_policy;
     int excluded[2];
     unsigned long long last_seq;
     int have_seq;
@@ -149,10 +149,10 @@ void wa_domain_add_local(wa_engine *e, uint32_t net, uint32_t mask);
 void wa_domain_add_vpn(wa_engine *e, uint32_t net, uint32_t mask);
 void wa_domain_add_pin(wa_engine *e, uint32_t src, uint32_t smask, uint32_t dst, uint32_t dmask);
 
-void wa_health_set_native(wa_engine *e, int unit, const wa_wan_facts *f);
+void wa_health_set_firmware(wa_engine *e, int unit, const wa_wan_facts *f);
 int wa_health_apply_snapshot(wa_engine *e, const char *text, double now);
 void wa_health_refresh(wa_engine *e, double now);
-void wa_health_switch_native(wa_engine *e);
+void wa_health_switch_firmware(wa_engine *e);
 wa_elig wa_health_eligibility(wa_engine *e, int unit);
 
 /* Lifecycle tracking (from conntrack events). Arrival order is not trusted;

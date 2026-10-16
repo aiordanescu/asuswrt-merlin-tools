@@ -3,7 +3,7 @@
 These are *not* used.  They exist so the gate-1 failure modes are demonstrated
 rather than asserted:
 
-* ``NativeThenLearn`` - let the native ``balance`` chain choose per connection,
+* ``FirmwareThenLearn`` - let the firmware ``balance`` chain choose per connection,
   then learn the source's WAN from the resulting mark.  Fails: two simultaneous
   first connections from one source can be chosen independently and land on
   different WANs before any learning happens.
@@ -22,12 +22,12 @@ from .health import ELIGIBLE
 from .model import AdmissionResult, Association, Domain, Event, Packet, apply_wan_mark, packet_is_eligible
 
 
-class NativeThenLearn:
-    name = "native-then-learn"
+class FirmwareThenLearn:
+    name = "firmware-then-learn"
 
-    def __init__(self, domain: Domain, native_pick: Callable[[str], int]):
+    def __init__(self, domain: Domain, firmware_pick: Callable[[str], int]):
         self.domain = domain
-        self.native_pick = native_pick
+        self.firmware_pick = firmware_pick
         self.learned: Dict[str, int] = {}
 
     def admission_decision(self, pkt: Packet) -> AdmissionResult:
@@ -42,8 +42,8 @@ class NativeThenLearn:
         )
         if not eligible:
             return AdmissionResult("pass", None, reason, None)
-        wan = self.native_pick(pkt.src)  # independent, per-connection decision
-        return AdmissionResult("mark", wan, "native-choice", apply_wan_mark(pkt.mark, wan))
+        wan = self.firmware_pick(pkt.src)  # independent, per-connection decision
+        return AdmissionResult("mark", wan, "firmware-choice", apply_wan_mark(pkt.mark, wan))
 
     def on_event(self, event: Event) -> None:
         if event.kind in ("NEW", "UPDATE") and event.state and event.state.wan is not None:

@@ -8,7 +8,7 @@ from .health import (
     HealthView,
     Snapshot,
     WanFacts,
-    native_eligibility,
+    firmware_eligibility,
     parse_snapshot,
 )
 from .model import (
@@ -36,7 +36,7 @@ __all__ = [
     "HealthView",
     "Snapshot",
     "WanFacts",
-    "native_eligibility",
+    "firmware_eligibility",
     "parse_snapshot",
     "AdmissionResult",
     "Association",

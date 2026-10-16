@@ -46,7 +46,7 @@ private Unix socket without installing a firewall rule.
 `run_throughput.py` requires an **already healthy, LAN-wide production sticky
 service on queue 20880**, fresh socket health with both WANs eligible, and the
 Mini's exact GUI source pin to WAN0. It is a site-specific driver using the
-aliases above, Mini interface `en0`, a `192.168.1.0/24` LAN, native WAN0 mark
+aliases above, Mini interface `en0`, a `192.168.1.0/24` LAN, firmware WAN0 mark
 `0x80000000`, policy priority 100, and OVHcloud's Hillsboro HTTPS test file.
 Review those assumptions before adapting it. It refuses surviving test-port
 connections; allow previous states to expire naturally before another run.

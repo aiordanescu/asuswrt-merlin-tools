@@ -134,9 +134,9 @@ void wa_engine_init(wa_engine *e, wa_mode mode, int w0, int w1,
     snprintf(e->affinity_seed, sizeof e->affinity_seed, "%s", affinity_seed ? affinity_seed : "");
     e->rng = rng_seed ? rng_seed : 0x9e3779b97f4a7c15ULL;
     for (int u = 0; u < 2; u++) {
-        e->health.native[u].enable = -1;
-        e->health.native[u].state_t = -1;
-        e->health.native[u].route_ready = -1;
+        e->health.firmware[u].enable = -1;
+        e->health.firmware[u].state_t = -1;
+        e->health.firmware[u].route_ready = -1;
     }
     const char *locals[] = {"192.168.0.0/16", "10.0.0.0/8", "172.16.0.0/12",
                             "127.0.0.0/8", "169.254.0.0/16", "224.0.0.0/4"};
@@ -180,12 +180,12 @@ static int is_vpn(const wa_engine *e, uint32_t dst) {
 /* health                                                             */
 /* ------------------------------------------------------------------ */
 
-void wa_health_set_native(wa_engine *e, int unit, const wa_wan_facts *f) {
+void wa_health_set_firmware(wa_engine *e, int unit, const wa_wan_facts *f) {
     if (unit < 0 || unit > 1 || !f) return;
-    e->health.native[unit] = *f;
+    e->health.firmware[unit] = *f;
 }
 
-static wa_elig native_eligibility(const wa_wan_facts *f) {
+static wa_elig firmware_eligibility(const wa_wan_facts *f) {
     if (f->enable == 0) return WA_UNUSABLE;
     if (f->enable != 1) return WA_UNKNOWN;
     if (f->state_t < 0) return WA_UNKNOWN;
@@ -200,12 +200,12 @@ static wa_elig native_eligibility(const wa_wan_facts *f) {
 
 wa_elig wa_health_eligibility(wa_engine *e, int unit) {
     wa_health *h = &e->health;
-    wa_elig native = native_eligibility(&h->native[unit]);
-    if (native != WA_ELIGIBLE) return native;
-    if (h->native_policy) return native_eligibility(&h->native[unit]);
+    wa_elig firmware = firmware_eligibility(&h->firmware[unit]);
+    if (firmware != WA_ELIGIBLE) return firmware;
+    if (h->firmware_policy) return firmware_eligibility(&h->firmware[unit]);
     if (h->enhanced && h->have_snap) return h->snap.state[unit];
     if (h->excluded[unit]) return WA_UNKNOWN; /* absence of enhanced is not recovery */
-    return native_eligibility(&h->native[unit]);
+    return firmware_eligibility(&h->firmware[unit]);
 }
 
 void wa_health_refresh(wa_engine *e, double now) {
@@ -216,8 +216,8 @@ void wa_health_refresh(wa_engine *e, double now) {
                       : 0;
 }
 
-void wa_health_switch_native(wa_engine *e) {
-    e->health.native_policy = 1;
+void wa_health_switch_firmware(wa_engine *e) {
+    e->health.firmware_policy = 1;
     e->health.excluded[0] = 0;
     e->health.excluded[1] = 0;
 }

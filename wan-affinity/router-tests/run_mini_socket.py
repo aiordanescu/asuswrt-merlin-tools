@@ -108,8 +108,8 @@ sh {root}/cleanup
         if restarting:return
         assert expected_pid==ssh('cat /tmp/wan-watchdog/wan-watchdog.pid\n')
         s=ssh('cat /tmp/wan-watchdog/status\n')
-        if 'native=1' in s:
-            h=json.loads(ssh('/jffs/wan-watchdog-native/wan-healthctl\n'))
+        if 'monitor=1' in s:
+            h=json.loads(ssh('/jffs/wan-watchdog/service/wan-healthctl\n'))
             assert all(w['eligible'] for w in h['wan']) and h['applied']==-1 and not h['routing_error'],h
         else:assert 'WAN0 usable' in s and 'WAN1 usable' in s and 'whole_failed=none' in s,s
     def fixture(primary,backup=1):
@@ -130,7 +130,7 @@ RECONCILE_INTERVAL=2
 IDLE_SECONDS=0
 MAX_RECONCILE_SECONDS=15
 AFFINITY_SEED=mini-test-0
-HEALTH_SOURCE=socket
+HEALTH_SOURCE=watchdog
 HEALTH_SOCKET={'/tmp/wan-watchdog/health.sock' if a.production_restart else root+'/health.sock'}
 '''
     def protect():

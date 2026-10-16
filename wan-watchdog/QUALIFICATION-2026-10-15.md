@@ -1,6 +1,6 @@
-# Native health service qualification — 2026-10-15
+# Monitor health service qualification — 2026-10-15
 
-Target: RT-AX88U, Merlin 3004.388.12_2, Linux 4.1.51 aarch64. Native static
+Target: RT-AX88U, Merlin 3004.388.12_2, Linux 4.1.51 aarch64. Monitor static
 musl builds use Zig 0.15.2; portable tests use Apple clang 21 and Python 3.
 The implementation preserves the shell reference byte for byte.
 
@@ -10,17 +10,17 @@ The persistent C watchdog owns source-bound concurrent ICMP, scheduling,
 sample history, classification/recovery, routing intent and the version-1
 multi-subscriber health service. The serialized shell actuator retains owned
 routing, VPN/local exceptions and DDNS behavior. Affinity consumes health in
-its admission loop, independent of delayed native-fact collection. Exclusions
+its admission loop, independent of delayed monitor-fact collection. Exclusions
 and actual routing acknowledgements are distinct from persistent intent.
 
 Guarded installation preserved the existing startup/firewall hooks and the
 shared ownership ledger. Rollback restored the exact original shell and
-healthy monitoring; reinstallation returned to the native service. Two
+healthy monitoring; reinstallation returned to the monitor service. Two
 independent readers each received 66 snapshots spanning two publisher
 instances and reconnected with fresh eligible evidence. A later logging-only
 update uses nonblocking local datagrams and firmware-supplied timestamps.
 
-The native watchdog is installed on the development router. This publication
+The monitor watchdog is installed on the development router. This publication
 contains the watchdog and its shared health library only. The consumer
 prototype and its integration tests will be published separately; no
 persistent consumer hooks or LAN-wide rules were enabled.
@@ -30,13 +30,13 @@ persistent consumer hooks or LAN-wide rules were enabled.
 | Check | Result |
 | --- | --- |
 | Original shell watchdog/DDNS Python suite | 65 passed |
-| Native core and codec | 434 checks passed |
+| Monitor core and codec | 434 checks passed |
 | Actual shell versus C classification replay | 1,000 rows identical |
-| Native Python parity/actuator suite | 11 tests passed |
+| Monitor Python parity/actuator suite | 11 tests passed |
 | Original combined publisher/consumer socket, restart, cache and delayed-merge test | 633 checks passed during integration development; consumer test excluded from this publication |
 | Standalone publisher/client socket test from a watchdog-only checkout | 625 checks passed on the router at publication |
 | Router raw-probe isolation/deadline/drain and send-error regression | 15 checks passed |
-| Native core ASAN/UBSAN; clang core/codec analyzer | Passed; no findings |
+| Monitor core ASAN/UBSAN; clang core/codec analyzer | Passed; no findings |
 | File-only whole-LAN/pinned recovery and emergency reversal | Passed on real clock |
 | Final whole-LAN orchestration run | 274.63 seconds; recovery hold, failed restoration, monitor stall, hung worker and repair passed |
 | Real actuator in isolated kernel namespace | Whole-LAN/pinned failover, restore and exact cleanup passed |
@@ -78,14 +78,14 @@ They are short healthy steady-state observations, not throughput benchmarks.
 | Run | Duration | CPU |
 | --- | --- | --- |
 | Shell reference, alongside read-only shadow | 70.14 s | 11.11% |
-| Native shadow, including fact inspection | 70.14 s | 3.38% |
-| Complete active native service, including reconciliation/DDNS checks | 70.27 s | 10.35% |
+| Monitor shadow, including fact inspection | 70.14 s | 3.38% |
+| Complete active monitor service, including reconciliation/DDNS checks | 70.27 s | 10.35% |
 
 The full-service CPU saving is modest; routing/configuration shell work still
 dominates. The shadow number must not be presented as active-service cost.
 The active parent used about 156–160 KiB RSS versus 1,508 KiB for the shell
 parent; these figures exclude peak worker memory. Maximum observed normal
-native dispatch delay was about 2–3 ms. Retaining two-second fact/repair checks
+monitor dispatch delay was about 2–3 ms. Retaining two-second fact/repair checks
 preserves the initial parity contract. Caching or reducing expensive shell
 reconciliation is a separate optimization requiring missed-event/repair tests.
 
@@ -101,7 +101,7 @@ Consumer results in this report are historical integration evidence, not
 commands that require unpublished code to build this watchdog. Publisher-only
 socket qualification is independently reproducible from this checkout.
 Publication checks also built the static router bundle from a staged checkout
-with no affinity tree, ran the 65 original tests plus 11 native Python tests
+with no affinity tree, ran the 65 original tests plus 11 monitor Python tests
 and 434 core/codec checks, checked shell syntax and driver entry points, and
 verified bundle licensing and repository-relative documentation links.
 

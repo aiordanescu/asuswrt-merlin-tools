@@ -105,7 +105,7 @@ prereq() {
     [ -r "$WA_PROC/net/netfilter/nfnetlink_queue" ] || fail 'queue interface unavailable'
     grep -qw NFQUEUE "$WA_PROC/net/ip_tables_targets" || fail 'NFQUEUE target unavailable'
     [ "$(nvram get wans_mode)" = lb ] || fail "wans_mode is not 'lb'"
-    [ -n "$(balance_line)" ] || fail 'native balance jump missing'
+    [ -n "$(balance_line)" ] || fail 'firmware balance jump missing'
     if chain_exists && ! owned; then fail "foreign chain $CHAIN exists; preserving it"; fi
     if queue_bound && ! helper_alive; then fail 'queue already bound by another process'; fi
 }
@@ -167,7 +167,7 @@ build_chain() {
     ipt -N "$CHAIN" || { rm -f "$OWNER"; return 1; }
     # NEW includes retransmissions/unreplied UDP of an already confirmed flow.
     # Admit only genuinely unconfirmed connections, never retag an existing NAT
-    # mapping after a health/policy change. Native restore runs after balance.
+    # mapping after a health/policy change. Firmware restore runs after balance.
     ipt -A "$CHAIN" -m conntrack --ctstatus CONFIRMED -j RETURN || return 1
     ipt -A "$CHAIN" -m connmark ! --mark 0x0/0xf0000000 -j RETURN || return 1
     # Pass sentinel occupies the already-reserved WAN field, not unrelated bits.
@@ -230,7 +230,7 @@ cmd_start() {
         rm -f "$RUN/stopped"
     fi
     [ "$ENABLED" = 1 ] || fail 'disabled in config; refusing activation'
-    # Boot hooks may run before the native firewall or queue interface exists.
+    # Boot hooks may run before the firmware firewall or queue interface exists.
     # Keep a retry owner even if this first attempt cannot become ready yet.
     start_monitor
     prereq
