@@ -2,6 +2,7 @@ CC ?= cc
 CFLAGS ?= -std=c11 -O2 -Wall -Wextra -Werror
 BUILD := build
 HEALTH = src/wa_health_client.c ../common/wan-health/wh_protocol.c ../common/wan-health/wh_socket.c
+CHECKPOINT = src/wa_checkpoint.c src/wa_checkpoint.h
 HEALTH_INC = -I../common/wan-health
 
 # Cross toolchain for the router (aarch64, musl static). Override if you have
@@ -20,20 +21,20 @@ $(BUILD)/test_worker: src/wa_worker.c src/wa_worker.h tests/c/test_worker.c
 	@mkdir -p $(BUILD)
 	$(CC) $(CFLAGS) -Isrc tests/c/test_worker.c src/wa_worker.c -o $@
 
-$(BUILD)/test_engine: src/wa_engine.c src/wa_engine.h src/wa_conntrack.c src/wa_conntrack.h src/wa_nl_frame.h src/wa_policy.h tests/c/test_engine.c
+$(BUILD)/test_engine: src/wa_engine.c src/wa_engine.h src/wa_conntrack.c src/wa_conntrack.h src/wa_nl_frame.h src/wa_policy.h $(CHECKPOINT) tests/c/test_engine.c
 	@mkdir -p $(BUILD)
-	$(CC) $(CFLAGS) -Isrc tests/c/test_engine.c src/wa_engine.c src/wa_conntrack.c -o $@
+	$(CC) $(CFLAGS) -Isrc tests/c/test_engine.c src/wa_engine.c src/wa_conntrack.c src/wa_checkpoint.c -o $@
 
 router: $(BUILD)/wan-affinity
 
-$(BUILD)/wan-affinity: src/wan_affinity.c src/wa_engine.c src/wa_engine.h src/wa_conntrack.c src/wa_conntrack.h src/wa_nl_frame.h src/wa_policy.h src/wa_worker.c src/wa_worker.h $(HEALTH) src/wa_health_client.h ../common/wan-health/wh_protocol.h ../common/wan-health/wh_socket.h
+$(BUILD)/wan-affinity: src/wan_affinity.c src/wa_engine.c src/wa_engine.h src/wa_conntrack.c src/wa_conntrack.h src/wa_nl_frame.h src/wa_policy.h src/wa_worker.c src/wa_worker.h $(CHECKPOINT) $(HEALTH) src/wa_health_client.h ../common/wan-health/wh_protocol.h ../common/wan-health/wh_socket.h
 	@mkdir -p $(BUILD)
-	$(ROUTER_CC) $(CFLAGS) $(ROUTER_LDFLAGS) -Isrc $(HEALTH_INC) src/wan_affinity.c src/wa_engine.c src/wa_conntrack.c src/wa_worker.c $(HEALTH) -o $@
+	$(ROUTER_CC) $(CFLAGS) $(ROUTER_LDFLAGS) -Isrc $(HEALTH_INC) src/wan_affinity.c src/wa_engine.c src/wa_conntrack.c src/wa_worker.c src/wa_checkpoint.c $(HEALTH) -o $@
 	@echo "built $@ (aarch64)"
 
 router-test: $(BUILD)/wan-affinity-test
 $(BUILD)/wan-affinity-test: $(BUILD)/wan-affinity
-	$(ROUTER_CC) $(CFLAGS) $(ROUTER_LDFLAGS) -DWA_TESTING -Isrc $(HEALTH_INC) src/wan_affinity.c src/wa_engine.c src/wa_conntrack.c src/wa_worker.c $(HEALTH) -o $@
+	$(ROUTER_CC) $(CFLAGS) $(ROUTER_LDFLAGS) -DWA_TESTING -Isrc $(HEALTH_INC) src/wan_affinity.c src/wa_engine.c src/wa_conntrack.c src/wa_worker.c src/wa_checkpoint.c $(HEALTH) -o $@
 
 clean:
 	rm -rf $(BUILD)
@@ -44,7 +45,7 @@ bundle: router
 	mkdir -p $(BUILD)/bundle/docs $(BUILD)/bundle/LICENSES
 	cp $(BUILD)/wan-affinity wan-affinity.sh wan-affinity.conf.example hooks.sh install.sh rollback.sh README.md ../LICENSE $(BUILD)/bundle/
 	cp BUILDING.md $(BUILD)/bundle/
-	cp docs/QUALIFICATION-2026-10-15.md docs/HEALTH-SOCKET.md docs/THROUGHPUT-2026-10-15.md $(BUILD)/bundle/docs/
+	cp docs/QUALIFICATION-2026-10-15.md docs/HEALTH-SOCKET.md docs/THROUGHPUT-2026-10-15.md docs/ADOPTION-2026-10-15.md $(BUILD)/bundle/docs/
 	cp LICENSES/*.txt $(BUILD)/bundle/LICENSES/
 	chmod 700 $(BUILD)/bundle $(BUILD)/bundle/wan-affinity $(BUILD)/bundle/*.sh
 	COPYFILE_DISABLE=1 tar --format=ustar -czf $(BUILD)/wan-affinity-aarch64.tar.gz -C $(BUILD)/bundle .

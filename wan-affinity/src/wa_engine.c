@@ -316,26 +316,16 @@ static wa_assoc *assoc_find(wa_engine *e, uint32_t src) {
 
 static wa_assoc *assoc_add(wa_engine *e, uint32_t src, int wan, int pref, double now,
                            const char *reason) {
-    if (e->n_assoc >= WA_MAX_ASSOC) return NULL;
+    if (e->n_assoc >= WA_MAX_ASSOC || e->next_binding_id >= WA_BINDING_LEGACY-1) return NULL;
     wa_assoc *a = &e->assoc[e->n_assoc++];
     memset(a, 0, sizeof *a);
     a->src = src;
+    a->binding_id = ++e->next_binding_id;
     a->wan = wan;
     a->preferred = pref;
     a->reason = reason;
     a->created = now;
     return a;
-}
-
-static void assoc_remove_src(wa_engine *e, uint32_t src) {
-    for (int i = 0; i < e->n_assoc; i++) {
-        if (e->assoc[i].src == src) {
-            memmove(&e->assoc[i], &e->assoc[i + 1],
-                    (size_t)(e->n_assoc - i - 1) * sizeof(wa_assoc));
-            e->n_assoc--;
-            return;
-        }
-    }
 }
 
 static int is_transitional(const wa_engine *e, uint32_t src) {
@@ -360,7 +350,7 @@ static void remove_transitional(wa_engine *e, uint32_t src) {
     }
 }
 
-static int state_relevant(const wa_engine *e, const wa_state *st) {
+int wa_state_relevant(const wa_engine *e, const wa_state *st) {
     if (st->dir_reply) return 0;
     if (st->proto != 6 && st->proto != 17) return 0;
     if (!is_lan(e, st->src)) return 0;
@@ -371,9 +361,23 @@ static int state_relevant(const wa_engine *e, const wa_state *st) {
 }
 
 static int assoc_has_relevant(wa_engine *e, uint32_t src) {
+    wa_assoc *a = assoc_find(e, src);
     for (int i = 0; i < e->n_state; i++)
-        if (e->state[i].src == src && state_relevant(e, &e->state[i])) return 1;
+        if (a && e->state[i].src == src && e->state[i].binding_id == a->binding_id &&
+            wa_state_relevant(e, &e->state[i])) return 1;
     return 0;
+}
+
+static int source_has_relevant(const wa_engine *e, uint32_t src) {
+    for (int i = 0; i < e->n_state; i++)
+        if (e->state[i].src == src && wa_state_relevant(e, &e->state[i])) return 1;
+    return 0;
+}
+
+static void claim_source(wa_engine *e, uint32_t src, uint64_t binding_id) {
+    for (int i = 0; i < e->n_state; i++)
+        if (e->state[i].src == src && !e->state[i].binding_id && wa_state_relevant(e, &e->state[i]))
+            e->state[i].binding_id = binding_id;
 }
 
 static void state_put(wa_engine *e, uint64_t ctid, uint32_t src, uint32_t dst, uint32_t sport,
@@ -383,7 +387,7 @@ static void state_put(wa_engine *e, uint64_t ctid, uint32_t src, uint32_t dst, u
         if (e->state[i].ctid == ctid) {
             wa_state *s = &e->state[i];
             if(s->src!=src || s->dst!=dst || s->sport!=sport || s->dport!=dport || s->proto!=proto)
-                e->tuple_index_valid=0;
+                { e->tuple_index_valid=0; s->binding_id=0; s->kernel_id=0; }
             s->src = src;
             s->dst = dst;
             s->sport = sport;
@@ -393,7 +397,7 @@ static void state_put(wa_engine *e, uint64_t ctid, uint32_t src, uint32_t dst, u
             s->provisional = (uint8_t)provisional;
             s->dir_reply = (uint8_t)(dir_reply ? 1 : 0);
             s->updated = now;
-            if (provisional) s->created = now;
+            if (provisional) { s->created = now; s->kernel_id = 0; }
             return;
         }
     }
@@ -567,11 +571,6 @@ wa_admission wa_admission_decision(wa_engine *e, double now, uint32_t src, uint3
     }
 
     wa_assoc *a = assoc_find(e, src);
-    if (!a && is_transitional(e, src)) {
-        r.reason = "transitional-adoption";
-        return r;
-    }
-
     if (!a) {
         int choices[2], nc = 0;
         for (int u = 0; u < 2; u++)
@@ -583,12 +582,15 @@ wa_admission wa_admission_decision(wa_engine *e, double now, uint32_t src, uint3
         }
         int pref = preferred_or_none(e, src);
         int wan = select_wan(e, choices, nc, pref);
-        a = assoc_add(e, src, wan, pref, now, "selected");
+        a = assoc_add(e, src, wan, pref, now,
+                      is_transitional(e, src) ? "selected-mixed" : "selected");
         if (!a) {
             e->uncertain = 1;
             r.reason = "table-full";
             return r;
         }
+        claim_source(e, src, WA_BINDING_LEGACY);
+        remove_transitional(e, src);
     } else {
         int pref = a->preferred;
         if (pref >= 0 && a->wan != pref && wa_health_eligibility(e, pref) == WA_ELIGIBLE) {
@@ -617,6 +619,8 @@ wa_admission wa_admission_decision(wa_engine *e, double now, uint32_t src, uint3
     a->have_candidate = 0;
     a->have_confirmed = 0;
     state_put(e, ctid, src, dst, sport, dport, proto, a->wan, 1, 0, now);
+    for (int i = 0; i < e->n_state; i++)
+        if (e->state[i].ctid == ctid) e->state[i].binding_id = a->binding_id;
     e->admissions++;
 
     r.action = WA_ACT_MARK;
@@ -773,6 +777,11 @@ static int merge_view(wa_engine *e,double started,double applied,const wa_state 
         int newer=full_view?s->updated>=started:s->updated>started;
         if (found >= 0) {
             if (newer) merged[found] = *s;
+            else if (merged[found].src == s->src && merged[found].dst == s->dst &&
+                     merged[found].proto == s->proto &&
+                     (!full_view || (merged[found].sport == s->sport && merged[found].dport == s->dport &&
+                      (!s->kernel_id || !merged[found].kernel_id || s->kernel_id == merged[found].kernel_id))))
+                merged[found].binding_id = s->binding_id;
             continue;
         }
         if ((newer || (s->provisional && !full_view)) && nm >= WA_MAX_STATES) {
@@ -805,20 +814,22 @@ static int merge_view(wa_engine *e,double started,double applied,const wa_state 
         }
     }
     for (int i = e->n_transitional - 1; i >= 0; i--)
-        if (!assoc_has_relevant(e, e->transitional[i])) remove_transitional(e, e->transitional[i]);
+        if (!source_has_relevant(e, e->transitional[i])) remove_transitional(e, e->transitional[i]);
     return 0;
 }
 
 void wa_reconstruct(wa_engine *e) {
+    if (e->uncertain) return;
     struct {
         uint32_t src;
         int wans;
         int unattributed;
+        int legacy;
     } g[WA_MAX_ASSOC];
     int ng = 0;
     for (int i = 0; i < e->n_state; i++) {
         wa_state *s = &e->state[i];
-        if (!state_relevant(e, s)) continue;
+        if (!wa_state_relevant(e, s)) continue;
         int gi = -1;
         for (int j = 0; j < ng; j++)
             if (g[j].src == s->src) {
@@ -830,12 +841,14 @@ void wa_reconstruct(wa_engine *e) {
             g[ng].src = s->src;
             g[ng].wans = 0;
             g[ng].unattributed = 0;
+            g[ng].legacy = 0;
             gi = ng++;
         }
         if (s->wan < 0)
             g[gi].unattributed = 1;
         else
             g[gi].wans |= (1 << s->wan);
+        if (s->binding_id) g[gi].legacy = 1;
     }
     double now = e->last_reconcile_mono;
     for (int j = 0; j < ng; j++) {
@@ -843,17 +856,17 @@ void wa_reconstruct(wa_engine *e) {
         /* Live policy edits can bring a previously pinned/excluded source
          * into scope. Adopt only unassociated sources; mixed flows following
          * our own failover must never erase an established decision. */
-        if (assoc_find(e, src) || is_transitional(e, src)) continue;
-        if (g[j].unattributed || g[j].wans == 3) {
+        if (assoc_find(e, src)) { claim_source(e, src, WA_BINDING_LEGACY); continue; }
+        if (g[j].legacy || g[j].unattributed || g[j].wans == 3) {
             add_transitional(e, src);
-            assoc_remove_src(e, src);
+            claim_source(e, src, WA_BINDING_LEGACY);
             continue;
         }
         if (g[j].wans == 1 || g[j].wans == 2) {
             if (assoc_find(e, src)) continue;
             int wan = (g[j].wans == 1) ? 0 : 1;
             wa_assoc *a = assoc_add(e, src, wan, preferred_or_none(e, src), now, "reconstructed");
-            if (a) a->adopted = 1;
+            if (a) { a->adopted = 1; claim_source(e, src, a->binding_id); }
             remove_transitional(e, src);
         }
     }
@@ -891,26 +904,32 @@ static const char *elig_str(wa_elig s) {
 
 void wa_engine_status(const wa_engine *e, char *buf, size_t len) {
     size_t used = 0;
-    int unobserved=0;
-    for(int i=0;i<e->n_state;i++)unobserved+=e->state[i].provisional!=0;
+    int unobserved=0,legacy=0;
+    for(int i=0;i<e->n_state;i++){unobserved+=e->state[i].provisional!=0;legacy+=e->state[i].binding_id==WA_BINDING_LEGACY;}
     used += (size_t)snprintf(buf + used, len - used,
                              "mode=%s enhanced=%s uncertain=%s wan0=%s wan1=%s "
-                             "assoc=%d states=%d unobserved=%d admissions=%zu last_error=%s\n",
+                             "assoc=%d states=%d unobserved=%d admissions=%zu last_error=%s legacy_states=%d\n",
                              e->mode == WA_AFFINITY ? "affinity" : "sticky",
                              e->health.enhanced ? "yes" : "no", e->uncertain ? "yes" : "no",
                              elig_str(wa_health_eligibility((wa_engine *)e, 0)),
                              elig_str(wa_health_eligibility((wa_engine *)e, 1)), e->n_assoc,e->n_state,unobserved,
-                             e->admissions, e->last_error[0] ? e->last_error : "-");
+                             e->admissions, e->last_error[0] ? e->last_error : "-",legacy);
     for (int i = 0; i < e->n_assoc && used < len; i++) {
         char ip[16];
         wa_ip_to_str(e->assoc[i].src, ip, sizeof ip);
+        int members=0,old=0;
+        for(int j=0;j<e->n_state;j++)if(e->state[j].src==e->assoc[i].src && wa_state_relevant(e,&e->state[j])) {
+            members+=e->state[j].binding_id==e->assoc[i].binding_id;
+            old+=e->state[j].binding_id==WA_BINDING_LEGACY;
+        }
         used += (size_t)snprintf(buf + used, len - used,
-                                 "src=%s wan=%d preferred=%d reason=%s failovers=%d pending=%s\n",
+                                 "src=%s wan=%d preferred=%d reason=%s failovers=%d pending=%s binding=%llu members=%d legacy=%d\n",
                                  ip, e->assoc[i].wan, e->assoc[i].preferred,
                                  e->assoc[i].reason, e->assoc[i].failovers,
-                                 e->assoc[i].have_candidate ? "yes" : "no");
+                                 e->assoc[i].have_candidate ? "yes" : "no",
+                                 (unsigned long long)e->assoc[i].binding_id,members,old);
     }
     if (e->n_transitional && used < len) {
-        used += (size_t)snprintf(buf + used, len - used, "transitional=%d\n", e->n_transitional);
+        used += (size_t)snprintf(buf + used, len - used, "awaiting_new=%d\n", e->n_transitional);
     }
 }

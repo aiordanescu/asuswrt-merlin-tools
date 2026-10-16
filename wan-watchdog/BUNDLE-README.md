@@ -5,7 +5,7 @@ This archive contains static binaries; no compiler or Python is needed on the
 router. Source and licensing: https://github.com/aiordanescu/asuswrt-merlin-tools
 
 Prebuilt downloads and checksums:
-https://github.com/aiordanescu/asuswrt-merlin-tools/releases/tag/wan-tools-2026.10.15-beta.3
+https://github.com/aiordanescu/asuswrt-merlin-tools/releases/tag/wan-tools-2026.10.15-beta.4
 Verify the downloaded archive against `SHA256SUMS` on your computer before
 transferring it. Building from source remains optional; the complete guide
 below retains those instructions.

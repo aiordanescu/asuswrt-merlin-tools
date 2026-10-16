@@ -60,7 +60,7 @@ used for queue binding, module loading or test rules.
 | Duplicate/lost/reordered conntrack events tolerated | `test_events` |
 | Validated empty vs truncated/miscounted/garbage dumps | `test_reconcile` |
 | Pins (source/destination/subnet), local/VPN/incoming/already-marked excluded; only WAN bits changed; HTTPS/QUIC in scope | `test_exclusions` |
-| Restart: single-WAN reconstruct, mixed-WAN/unattributed deferred, pinned ignored | `test_restart` |
+| Restart: single-WAN reconstruct, mixed-WAN/unattributed new-flow adoption, pinned ignored | `test_restart` |
 | Health: firmware readiness, recovery hold != recovered, enhanced disappearance preserves exclusion, reassign only on known-unusable | `test_health` |
 | Weighted ratio, affinity determinism, MAC-derived seed stability | `test_selection` |
 | Randomized serialization stress (3 seeds) + recovery does not force return | `test_invariants` |

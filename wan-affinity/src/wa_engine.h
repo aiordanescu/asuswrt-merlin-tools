@@ -29,6 +29,7 @@
 #define WA_DUMP_HEADER "#wan-affinity-conntrack v1 count="
 #define WA_DUMP_END "--end--"
 #define WA_ERR_LEN 48
+#define WA_BINDING_LEGACY UINT64_MAX
 
 typedef enum { WA_STICKY = 0, WA_AFFINITY = 1 } wa_mode;
 typedef enum { WA_ELIGIBLE = 0, WA_UNUSABLE = 1, WA_UNKNOWN = 2 } wa_elig;
@@ -67,6 +68,8 @@ typedef struct {
 
 typedef struct {
     uint64_t ctid;
+    uint64_t binding_id; /* 0 unclassified, LEGACY, or one source mapping */
+    uint64_t kernel_id;  /* confirmed identity used only for restart matching */
     uint32_t src, dst;
     uint32_t sport, dport;
     uint8_t proto;      /* 6 tcp, 17 udp */
@@ -78,6 +81,7 @@ typedef struct {
 
 typedef struct {
     uint32_t src;
+    uint64_t binding_id; /* stable across failover; epoch is a routing change */
     int wan;
     int preferred;      /* -1 for sticky */
     int adopted;
@@ -129,6 +133,7 @@ typedef struct {
     size_t admissions;
     unsigned long long rng;
     uint64_t next_flow_token;
+    uint64_t next_binding_id;
     int tuple_index[WA_MAX_STATES * 2];
     int tuple_index_valid;
 } wa_engine;
@@ -170,6 +175,7 @@ int wa_reconcile(wa_engine *e, double now, const char *framed_dump, int read_ok)
 int wa_reconcile_view(wa_engine *e, double started, double applied,
                       const wa_state *states, int count, int read_ok);
 void wa_reconstruct(wa_engine *e);
+int wa_state_relevant(const wa_engine *e, const wa_state *st);
 int wa_tick(wa_engine *e, double now);
 
 uint64_t wa_ctid_hash(uint8_t proto, uint32_t src, uint32_t dst, uint32_t sport, uint32_t dport);

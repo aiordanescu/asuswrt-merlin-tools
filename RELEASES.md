@@ -1,14 +1,14 @@
 # Prebuilt WAN tools
 
-[WAN tools — 2026-10-15 beta](https://github.com/aiordanescu/asuswrt-merlin-tools/releases/tag/wan-tools-2026.10.15-beta.3)
+[WAN tools — 2026-10-15 beta](https://github.com/aiordanescu/asuswrt-merlin-tools/releases/tag/wan-tools-2026.10.15-beta.4)
 provides static **aarch64 Linux** bundles. No compiler, Python or Entware is
 needed on the router. Tested target: RT-AX88U, Asuswrt-Merlin 3004.388.12_2,
 Linux 4.1.51. This is not a build for 32-bit ARM, MIPS or every Merlin model.
 
 | Download | Included production binaries | Installation |
 | --- | --- | --- |
-| [wan-affinity-aarch64.tar.gz](https://github.com/aiordanescu/asuswrt-merlin-tools/releases/download/wan-tools-2026.10.15-beta.3/wan-affinity-aarch64.tar.gz) | `wan-affinity` (0.4.1), controller, installer, disabled example, rollback and guides | [Affinity instructions](wan-affinity/README.md#download-and-install) |
-| [wan-watchdog-aarch64.tar.gz](https://github.com/aiordanescu/asuswrt-merlin-tools/releases/download/wan-tools-2026.10.15-beta.3/wan-watchdog-aarch64.tar.gz) | `wan-watchdog`, `wan-healthctl`, shell actuator/reference, installer and rollback | [WAN Watchdog instructions](wan-watchdog/GUIDE.md#download-and-qualification) |
+| [wan-affinity-aarch64.tar.gz](https://github.com/aiordanescu/asuswrt-merlin-tools/releases/download/wan-tools-2026.10.15-beta.4/wan-affinity-aarch64.tar.gz) | `wan-affinity` (0.4.2), controller, installer, disabled example, rollback and guides | [Affinity instructions](wan-affinity/README.md#download-and-install) |
+| [wan-watchdog-aarch64.tar.gz](https://github.com/aiordanescu/asuswrt-merlin-tools/releases/download/wan-tools-2026.10.15-beta.4/wan-watchdog-aarch64.tar.gz) | `wan-watchdog`, `wan-healthctl`, shell actuator/reference, installer and rollback | [WAN Watchdog instructions](wan-watchdog/GUIDE.md#download-and-qualification) |
 
 The components remain independently installed and operated. The shell watchdog
 and Namecheap DDNS helper do not need compilation. Test executables and fixture
@@ -44,17 +44,19 @@ does not change those checks or turn this into an unattended watchdog upgrade.
 
 ## Verification for this release
 
-The renamed programs passed 176 Python tests and 602 host C checks. Router-only
-socket, subscriber/health-merge and loopback-probe tests passed 1,273 checks using
-private test endpoints. All four health-source settings passed configuration
-validation on the router.
+Affinity 0.4.2 passes 102 Python tests, 270 engine/checkpoint C checks and
+21 worker C checks, plus address/undefined-behavior sanitizers. The private
+router health-consumer test passes 633 checks. The guarded Mac mini test keeps
+two real HTTPS connections alive on different WANs while 16 concurrent new
+connections share a mapping, then verifies restart recovery and two further
+new connections. Both sticky and affinity pass. Pins, routing/firewall rules
+and hooks are restored; production service PIDs remain unchanged by that test.
+See the [adoption report](wan-affinity/docs/ADOPTION-2026-10-15.md).
 
-A guarded update on the tested router preserved the GUI WAN pins, routing
-rules, mangle rules and startup-hook bytes. Both WANs became freshly eligible,
-Affinity consumed watchdog health using `HEALTH_SOURCE=watchdog`, and its
-supervisor retained the new helper. Eight LAN-bound HTTPS/DNS/QUIC checks from
-the Mac mini passed. These checks do not expand the platform or outage
-qualification described in the component reports.
+The watchdog's production code is unchanged from beta 3. Package verification
+checks the tagged source, static aarch64 executables, disabled affinity example,
+licenses and exact checksums. Component qualification guides retain the scope
+and limitations of the earlier tests.
 
 ## Optional source builds
 

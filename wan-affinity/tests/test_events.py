@@ -35,13 +35,14 @@ class EventTests(unittest.TestCase):
         reconcile(engine, [make_state("c1", SRC, INTERNET, wan=admitted.wan)], clock)
         self.assertEqual(engine.tick(), [])
 
-    def test_destroy_then_reordered_new_keeps_association(self):
+    def test_unadmitted_state_does_not_extend_mapping(self):
         clock, engine, admitted = self._engine_with_state()
         engine.on_event(Event("DESTROY", "c1"))
         engine.on_event(Event("NEW", "c2", make_state("c2", SRC, INTERNET2, wan=admitted.wan)))
+        clock.advance(1)
         reconcile(engine, [make_state("c2", SRC, INTERNET2, wan=admitted.wan)], clock)
-        self.assertEqual(engine.tick(), [])
-        self.assertIn(SRC, engine.assoc)
+        self.assertEqual(len(engine.tick()), 1)
+        self.assertNotIn(SRC, engine.assoc)
 
     def test_lost_destroy_recovered_by_reconcile(self):
         clock, engine, _ = self._engine_with_state()

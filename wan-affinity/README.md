@@ -2,11 +2,11 @@
 
 Per-source IPv4 WAN stickiness for Dual WAN **load-balance** mode. New TCP and
 UDP connections from a LAN address use the same eligible WAN while that source
-has tracked Internet connections. Existing connections keep their marks.
+has connections belonging to that source mapping. Existing connections keep their marks.
 
 The default is **OPNsense-style sticky connections**: `MODE=sticky`,
 `IDLE_SECONDS=0`. OPNsense documents keeping a source's gateway while any state
-remains active; this project implements that policy on Linux/Asuswrt rather
+referring to the mapping remains active; this project implements that policy on Linux/Asuswrt rather
 than reproducing pf. [OPNsense reference](https://docs.opnsense.org/manual/firewall_settings.html#sticky-connections).
 
 Tested hardware: **RT-AX88U, Merlin 3004.388.12_2, Linux 4.1.51, aarch64**.
@@ -18,7 +18,7 @@ Treat other firmware, router architectures, and IPv6 as unqualified. Read the
 - A new source chooses an eligible WAN using the firmware's `wans_lb_ratio`
   weights, currently read every two seconds. Weights apply to new source
   associations, not to individual connections or measured bandwidth.
-- The association remains while relevant TCP/UDP states exist, including quiet
+- The association remains while its member TCP/UDP states exist, including quiet
   established connections and packets still awaiting confirmation. A complete
   unconfirmed-then-confirmed view must prove them gone before idle expiry.
   `IDLE_SECONDS=0` adds no extra idle timer; collection still takes time.
@@ -28,10 +28,14 @@ Treat other firmware, router architectures, and IPv6 as unqualified. Read the
 - Optional `MODE=affinity` uses a stable, weighted preference derived from the
   source IP and a router seed. It can return **new** connections to that WAN
   after recovery. This is a different policy from the default sticky mode.
-- A restart can adopt a source whose surviving relevant connections all use one
-  identifiable WAN. Mixed or unattributed sources remain under firmware balancing
-  until their relevant states drain. Enabling this on a busy LAN therefore does
-  not instantly convert every existing client into a sticky source.
+- Mixed or unattributed pre-existing connections never block adoption. The next
+  new connection selects one eligible WAN; subsequent new connections share it.
+  Existing connections keep their WANs and NAT mappings. This applies to both modes.
+- A restart restores verified same-boot mappings from a private RAM checkpoint.
+  Without a valid checkpoint, an unambiguous surviving WAN can be adopted;
+  mixed sources select a WAN on their next new connection. Older connections
+  are tracked separately and do not prolong a newly created mapping's lifetime.
+  See [adoption and restart behavior](docs/ADOPTION-2026-10-15.md).
 
 Identity is the **LAN IPv4 address**, not the device MAC, user, application,
 remote site, or a permanent DHCP identity. IPv6 and protocols other than TCP/UDP
@@ -98,7 +102,7 @@ flushed on failover, recovery, stop, upgrade, or uninstall.
 No Entware dependency or router firmware rebuild is required for the tested
 static aarch64 binary. Download **`wan-affinity-aarch64.tar.gz`** and
 **`SHA256SUMS`** from the
-[prebuilt beta release](https://github.com/aiordanescu/asuswrt-merlin-tools/releases/tag/wan-tools-2026.10.15-beta.3)
+[prebuilt beta release](https://github.com/aiordanescu/asuswrt-merlin-tools/releases/tag/wan-tools-2026.10.15-beta.4)
 to your computer. This build targets **aarch64 Linux** and was tested on the
 RT-AX88U / Merlin 3004.388.12_2. Compare the archive's checksum with its entry
 in `SHA256SUMS` (on macOS):
@@ -108,7 +112,7 @@ shasum -a 256 wan-affinity-aarch64.tar.gz
 ```
 
 On Linux use `sha256sum`. See
-[release and verification details](https://github.com/aiordanescu/asuswrt-merlin-tools/blob/wan-tools-2026.10.15-beta.3/RELEASES.md).
+[release and verification details](https://github.com/aiordanescu/asuswrt-merlin-tools/blob/wan-tools-2026.10.15-beta.4/RELEASES.md).
 Using an SSH alias named `router`, transfer the verified archive:
 
 ```sh
@@ -234,9 +238,12 @@ has no previous affinity version to restore.
 ## Status and limits
 
 `/tmp/wan-affinity/status` is an atomic diagnostic file, not the health IPC.
-It includes source associations, transitional-source count, enhanced-health
+It includes source associations, mapping-member and legacy-state counts, enhanced-health
 status, publisher sequence/instance, evidence age, queue/admission counts,
-refresh failures and maximum observed packet timestamp delay.
+refresh failures and maximum observed packet timestamp delay. `awaiting_new`
+counts sources waiting for their next new connection; it does not require an
+idle period. Per-source `members` belong to the current mapping; `legacy` counts
+older connections whose placement stays unchanged.
 
 The helper bounds associations at 1,024 and tracked tuples at 4,096, plus
 bounded local/policy selector lists. Incomplete, malformed or oversized views
@@ -247,8 +254,12 @@ new eligibility. This is a home-router implementation, not a claim to support
 
 A bounded worker reads firmware facts and complete U-then-C conntrack views;
 packet admission stays in the parent loop. RAM holds the frequent state and
-bounded logs. Source associations are reconstructed rather than written to
-flash. Hardware acceleration is left enabled. A
+bounded logs. `/tmp/wan-affinity/mappings.cache` is a bounded, root-only RAM
+checkpoint, refreshed with valid observations and mapping changes. It is
+validated against boot identity, mode/scope/seed, age (at most five minutes),
+checksum and surviving connection identities. Invalid or missing checkpoints
+fall back to fresh adoption; they never recreate connections. No frequent
+mapping writes go to flash. Hardware acceleration is left enabled. A
 [30-second primary-WAN download comparison](docs/THROUGHPUT-2026-10-15.md)
 measured 638 Mb/s bypassing admission versus 632 Mb/s through affinity, with
 increasing hardware hit counters in both runs and no queue drops. This

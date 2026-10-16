@@ -16,7 +16,7 @@ first creates the association, the second observes it.
 Expiry is deliberately **not** driven by conntrack event arrival order (which
 is not ordered across CPUs).  A DESTROY only marks a source as an expiry
 *candidate*; the association is actually removed only after a *validated*
-reconcile confirms the source has zero relevant states.  That confirmation and
+reconcile confirms the mapping has zero relevant member states.  That confirmation and
 the removal happen in the same loop as admission, so an expiry cannot race an
 admission for the same source, and an empty/error/truncated read never expires
 anything.
@@ -88,6 +88,7 @@ class Engine:
     def _has_relevant(self, src: str) -> bool:
         return any(
             st.src == src and st.relevant_in(self.domain)
+            and src in self.assoc and st.binding_id == self.assoc[src].binding_id
             for st in self.states.values()
         )
 
@@ -104,6 +105,7 @@ class Engine:
             provisional=provisional,
             created_mono=now,
             updated_mono=now,
+            binding_id=self.assoc[pkt.src].binding_id,
         )
 
     def _sync_candidates(self) -> None:
@@ -135,11 +137,6 @@ class Engine:
             return AdmissionResult("pass", None, reason, None)
 
         assoc = self.assoc.get(pkt.src)
-        if assoc is None and pkt.src in self.transitional:
-            # Live flows on more than one WAN / unattributable flows: do not
-            # invent a conflicting association.
-            return AdmissionResult("pass", None, "transitional-adoption", None)
-
         if assoc is None:
             choices = [u for u in (0, 1) if self.health.eligibility(u) == ELIGIBLE]
             if not choices:
@@ -153,8 +150,13 @@ class Engine:
                 preferred_wan=preferred,
                 epoch=self._next_epoch(),
                 created_mono=now,
-                reason="selected",
+                reason="selected-mixed" if pkt.src in self.transitional else "selected",
             )
+            assoc.binding_id = assoc.epoch
+            for state in self.states.values():
+                if state.src == pkt.src and state.relevant_in(self.domain) and not state.binding_id:
+                    state.binding_id = -1
+            self.transitional.discard(pkt.src)
             self.assoc[pkt.src] = assoc
         else:
             preferred = assoc.preferred_wan
@@ -202,6 +204,9 @@ class Engine:
             if event.state is None:
                 return
             state = event.state
+            old = self.states.get(state.ctid)
+            if old and (old.src, old.dst, old.proto) == (state.src, state.dst, state.proto):
+                state.binding_id = old.binding_id
             state.provisional = False
             state.updated_mono = now
             self.states[state.ctid] = state
@@ -241,6 +246,8 @@ class Engine:
                 # adapter. Never erase a newer pending generation with it.
                 if newer:
                     merged[ctid] = state
+                elif (merged[ctid].src, merged[ctid].dst, merged[ctid].proto) == (state.src, state.dst, state.proto):
+                    merged[ctid].binding_id = state.binding_id
                 continue
             if newer:
                 merged[ctid] = state
@@ -253,6 +260,7 @@ class Engine:
                     self.uncertain = True
                     self.last_reconcile_error = "unconfirmed-admission"
         self.states = merged
+        self.transitional.intersection_update(self._relevant_srcs())
 
         self._sync_candidates()
         for src, assoc in self.assoc.items():
@@ -267,37 +275,35 @@ class Engine:
         self.apply_reconcile(result)
         if not result.valid:
             return
-        by_src: Dict[str, set] = {}
-        unattributed = set()
+        if self.uncertain:
+            return
+        by_src = {}
         for state in self.states.values():
-            if not state.relevant_in(self.domain):
-                continue
-            if state.wan is None:
-                unattributed.add(state.src)
-            else:
-                by_src.setdefault(state.src, set()).add(state.wan)
-
+            if state.relevant_in(self.domain):
+                by_src.setdefault(state.src, []).append(state)
         now = self.clock()
-        for src, wans in by_src.items():
-            if src in unattributed or src in self.assoc:
+        for src, states in by_src.items():
+            if src in self.assoc:
+                for state in states:
+                    if not state.binding_id:
+                        state.binding_id = -1
                 continue
-            if len(wans) == 1:
-                wan = next(iter(wans))
-                self.assoc[src] = Association(
-                    src=src,
-                    wan=wan,
-                    epoch=self._next_epoch(),
-                    created_mono=now,
-                    adopted=True,
-                    reason="reconstructed",
-                )
-                self.transitional.discard(src)
-            elif len(wans) > 1:
-                # flows already live on both WANs: defer claiming stickiness
+            wans = {state.wan for state in states}
+            if None in wans or len(wans) > 1 or any(state.binding_id for state in states):
                 self.transitional.add(src)
-                self.assoc.pop(src, None)
-        for src in unattributed:
-            self.transitional.add(src)
+                for state in states:
+                    if not state.binding_id:
+                        state.binding_id = -1
+                continue
+            assoc = Association(src=src, wan=next(iter(wans)),
+                                epoch=self._next_epoch(), created_mono=now,
+                                preferred_wan=self.selector.preferred_wan(self.config.ratio, src),
+                                adopted=True, reason="reconstructed")
+            assoc.binding_id = assoc.epoch
+            self.assoc[src] = assoc
+            for state in states:
+                state.binding_id = assoc.binding_id
+            self.transitional.discard(src)
 
     # ------------------------------------------------------------------ #
     # expiry
@@ -344,5 +350,5 @@ class Engine:
                 }
                 for src, a in sorted(self.assoc.items())
             },
-            "transitional": sorted(self.transitional),
+            "awaiting_new": sorted(self.transitional),
         }

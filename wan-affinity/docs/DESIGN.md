@@ -9,6 +9,10 @@
 > [LIFECYCLE-FIX-2026-10-15.md](LIFECYCLE-FIX-2026-10-15.md). Other rollout
 > qualification gates remain. The earlier findings are preserved as history.
 
+The [0.4.2 adoption update](ADOPTION-2026-10-15.md) replaces indefinite
+mixed-source deferral with immediate new-connection adoption in both modes,
+explicit mapping membership, and validated same-boot restart recovery.
+
 ## Current runtime qualification
 
 The scoped helper builds and forwards real LAN traffic. The original stage-2
@@ -31,9 +35,9 @@ with queued packets.
 
 1. One association per eligible LAN IPv4 source. Simultaneous first
    connections cannot choose different WANs.
-2. Relevant TCP/UDP states - including quiet established connections - retain
+2. Member TCP/UDP states - including quiet established connections - retain
    the association. Optional idle retention starts only after the last relevant
-   state disappears.
+   member state disappears.
 3. Creation and expiry have a defined serialization boundary; conntrack event
    arrival order is not that boundary.
 4. GUI source/destination/subnet pins, local/VPN traffic and incoming flows are
@@ -73,14 +77,14 @@ then learn" window exists (that approach is rejected: two simultaneous first
 packets are chosen independently before any learning).
 
 Conntrack events and periodic reconcile are **lifecycle tracking, not atomic
-assignment**. They tell us when a source's last relevant state is gone.
+assignment**. They tell us when a mapping's last relevant member state is gone.
 
 ## Expiry without event-order dependence
 
 Conntrack netlink events are not globally ordered (four CPUs on this router), so
 a lone DESTROY never expires anything. A DESTROY only marks the source as an
 expiry *candidate*. The association is removed only when a **validated** dump
-confirms the source has zero relevant states, and the removal happens in the
+confirms the mapping has zero relevant member states, and the removal happens in the
 same single-threaded loop as admission. Consequences:
 
 * An expiry can never race an admission for the same source.

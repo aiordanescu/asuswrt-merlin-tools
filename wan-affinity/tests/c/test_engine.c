@@ -6,6 +6,9 @@
 #include "wa_conntrack.h"
 #include "wa_nl_frame.h"
 #include "wa_policy.h"
+#include "wa_checkpoint.h"
+#include <unistd.h>
+#include <stdlib.h>
 
 #include <stdio.h>
 #include <string.h>
@@ -267,7 +270,7 @@ static void test_reconstruct_single_and_mixed(void) {
     CHECK(find_assoc(&e2, ip("192.168.1.91")) == NULL, "mixed-WAN source not adopted");
     wa_admission r = wa_admission_decision(&e2, 501.0, ip("192.168.1.91"), ip("1.1.1.1"), 6, 9, 80,
                                            0, 900);
-    CHECK(strcmp(r.reason, "transitional-adoption") == 0, "mixed-WAN source deferred");
+    CHECK(r.action==WA_ACT_MARK && !strcmp(r.reason, "selected-mixed") && !e2.n_transitional, "mixed-WAN source binds on its first new flow");
 }
 
 static void test_event_lifecycle(void) {
@@ -499,7 +502,88 @@ static void test_live_unpin_adoption_retains_failover_decision(void) {
     CHECK(find_assoc(&e,src) && find_assoc(&e,src)->wan==0 && !e.n_transitional,"reconciliation preserves intentional mixed-WAN failover");
 }
 
+
+static void test_mixed_mapping_lifetime_and_restart(void) {
+    for(int mode=WA_STICKY;mode<=WA_AFFINITY;mode++) {
+        static wa_engine e,restarted;
+        base_engine(&e,(wa_mode)mode,"mixed-seed");both_up(&e);
+        uint32_t src=ip("192.168.1.91");
+        wa_state legacy[3]={
+            {.ctid=1,.kernel_id=11,.src=src,.dst=0x01010101u,.sport=41000,.dport=443,.proto=6,.wan=0},
+            {.ctid=2,.kernel_id=12,.src=src,.dst=0x08080808u,.sport=41001,.dport=8883,.proto=6,.wan=1},
+            {.ctid=3,.kernel_id=13,.src=src,.dst=0x09090909u,.sport=41002,.dport=443,.proto=17,.wan=-1}};
+        CHECK(!wa_reconcile_view(&e,1,1.1,legacy,3,1),"mixed camera observation accepted");wa_reconstruct(&e);
+        CHECK(!e.n_assoc && e.n_transitional==1,"mixed source awaits a new connection, without adopting an old WAN");
+        set_firmware(&e,0,0);set_firmware(&e,1,0);
+        CHECK(wa_admission_decision(&e,1.2,src,0x01010101u,6,42000,443,0,4).action==WA_ACT_PASS,"mixed adoption requires eligible health");
+        both_up(&e);
+        wa_admission first=wa_admission_decision(&e,2,src,0x01010101u,6,42000,443,0,4);
+        CHECK(first.action==WA_ACT_MARK && e.n_assoc==1 && !e.n_transitional,"new mapping created despite permanent mixed sessions");
+        uint64_t binding=e.assoc[0].binding_id;
+        for(int i=0;i<32;i++) {
+            wa_admission next=wa_admission_decision(&e,2,src,0x01010101u,17,42001+i,443,0,5+i);
+            CHECK(next.action==WA_ACT_MARK && next.wan==first.wan,"simultaneous first arrivals share a mapping in both modes");
+        }
+        CHECK(e.state[0].wan==0 && e.state[1].wan==1 && e.state[2].wan==-1,"pre-existing connection placement never rewritten");
+        CHECK(e.state[0].binding_id==WA_BINDING_LEGACY && e.state[1].binding_id==WA_BINDING_LEGACY,"legacy sessions do not own the new mapping");
+        static wa_state view[40];int n=e.n_state;memcpy(view,e.state,n*sizeof *view);
+        for(int i=0;i<n;i++){view[i].binding_id=0;view[i].kernel_id=100+i;view[i].provisional=0;}
+        /* Preserve real kernel identities for the three original connections. */
+        for(int i=0;i<3;i++)view[i].kernel_id=legacy[i].kernel_id;
+        CHECK(!wa_reconcile_view(&e,3,3.1,view,n,1),"confirmation preserves mapping membership");wa_reconstruct(&e);
+        CHECK(e.state[3].binding_id==binding && !wa_tick(&e,3.1),"quiet confirmed mapping members retain it");
+        char path[128];snprintf(path,sizeof path,"/tmp/wa-mapping-test-%ld-%d",(long)getpid(),mode);
+        uint8_t boot[16]={1};
+        CHECK(!wa_checkpoint_save(path,&e,boot,77,UINT64_C(4000000000)),"same-boot mapping checkpoint saved");
+        base_engine(&restarted,(wa_mode)mode,"mixed-seed");both_up(&restarted);
+        for(int i=0;i<n;i++)view[i].ctid+=1000; /* process-local tokens do not survive restart */
+        CHECK(!wa_reconcile_view(&restarted,4,4.1,view,n,1),"restart reads fresh tuples with new local tokens");wa_reconstruct(&restarted);
+        CHECK(wa_checkpoint_load(path,&restarted,boot,77,UINT64_C(5000000000))==1,"checkpoint restores only fresh surviving state identities");
+        CHECK(restarted.n_assoc==1 && restarted.assoc[0].wan==first.wan && restarted.assoc[0].binding_id==binding,"restart keeps mixed-source choice and membership");
+        CHECK(wa_admission_decision(&restarted,5,src,0x08080808u,6,43000,443,0,2000).wan==first.wan,"new connections remain sticky after restart");
+        CHECK(wa_checkpoint_load(path,&restarted,boot,78,UINT64_C(5000000000))==0,"different policy profile rejects checkpoint");
+        boot[1]=2;
+        CHECK(wa_checkpoint_load(path,&restarted,boot,77,UINT64_C(5000000000))==0,"different boot rejects checkpoint");boot[1]=0;
+        CHECK(wa_checkpoint_load(path,&restarted,boot,77,UINT64_C(400000000000))==0,"aged checkpoint rejected");
+        FILE *f=fopen(path,"ab");CHECK(f!=NULL,"open checkpoint for corruption test");if(f){fputc(1,f);fclose(f);}
+        int kept=restarted.n_assoc;
+        CHECK(wa_checkpoint_load(path,&restarted,boot,77,UINT64_C(5000000000))<0 && restarted.n_assoc==kept,"corrupt checkpoint cannot mutate a live mapping");unlink(path);
+        CHECK(!wa_checkpoint_save(path,&e,boot,77,UINT64_C(4000000000)),"refresh valid checkpoint for terminal-member check");
+        base_engine(&restarted,(wa_mode)mode,"mixed-seed");both_up(&restarted);
+        CHECK(!wa_reconcile_view(&restarted,4,4.1,legacy,3,1),"restart sees only surviving legacy sessions");wa_reconstruct(&restarted);
+        CHECK(wa_checkpoint_load(path,&restarted,boot,77,UINT64_C(5000000000))==1 && !restarted.n_assoc,
+              "checkpoint cannot revive a mapping whose members ended even while legacy sessions survive");unlink(path);
+        /* The source never becomes idle: only its newly admitted members end. */
+        CHECK(!wa_reconcile_view(&e,6,6.1,legacy,3,1),"legacy camera sessions remain after new mapping's flows finish");wa_reconstruct(&e);
+        CHECK(wa_tick(&e,6.1)==1 && !e.n_assoc,"only member lifetime controls default expiry");
+        wa_reconstruct(&e);
+        CHECK(!e.n_assoc && e.n_transitional==1,"legacy sessions cannot resurrect an expired mapping");
+        CHECK(wa_admission_decision(&e,7,src,0x01010101u,6,44000,443,0,500).action==WA_ACT_MARK,"continuously active legacy source can create the next mapping immediately");
+        /* Even a source now showing a single WAN stays eligible for new admission. */
+        CHECK(!wa_reconcile_view(&e,8,8.1,legacy,1,1),"old single remaining session observed");wa_reconstruct(&e);wa_tick(&e,8.1);wa_reconstruct(&e);
+        CHECK(!e.n_assoc && wa_admission_decision(&e,9,src,0x01010101u,6,45000,443,0,600).action==WA_ACT_MARK,"single leftover legacy session never blocks adoption");
+    }
+}
+
+
+static void test_confirmed_identity_reuse_is_not_mapping_membership(void) {
+    static wa_engine e;
+    base_engine(&e,WA_STICKY,NULL);both_up(&e);
+    uint32_t src=ip("192.168.1.91");
+    wa_admission first=wa_admission_decision(&e,1,src,0x01010101u,6,44000,443,0,1);
+    wa_state row=e.state[0];row.kernel_id=77;row.binding_id=0;row.provisional=0;
+    CHECK(!wa_reconcile_view(&e,2,2.1,&row,1,1),"first kernel identity confirmed");wa_reconstruct(&e);
+    CHECK(!wa_tick(&e,2.1),"matching identity keeps its member mapping");
+    row.kernel_id=88;
+    CHECK(!wa_reconcile_view(&e,3,3.1,&row,1,1),"same five-tuple observed with a different kernel identity");wa_reconstruct(&e);
+    CHECK(e.state[0].wan==first.wan && e.state[0].binding_id==WA_BINDING_LEGACY,
+          "unadmitted replacement keeps its existing WAN but cannot inherit mapping ownership");
+    CHECK(wa_tick(&e,3.1)==1,"unrelated replacement does not extend the previous mapping");
+}
+
 int main(void) {
+    test_mixed_mapping_lifetime_and_restart();
+    test_confirmed_identity_reuse_is_not_mapping_membership();
     test_policy_exclusions();
     test_live_unpin_adoption_retains_failover_decision();
     test_simultaneous_first_connections();

@@ -1,8 +1,8 @@
 [b]WAN Affinity: sticky connections for Asuswrt-Merlin Dual WAN load balancing[/b]
 
-I've been working on a companion to my WAN watchdog: [b]WAN Affinity[/b]. It keeps new IPv4 TCP and UDP connections from the same LAN address on the same WAN while that client has tracked Internet connections.
+I've been working on a companion to my WAN watchdog: [b]WAN Affinity[/b]. It keeps new IPv4 TCP and UDP connections from the same LAN address on the same WAN while that source mapping has active connections.
 
-The default follows OPNsense's sticky-connections policy: choose a WAN for the source, keep using it while states remain active, and release the association once a complete connection-state check proves them gone. There's no extra idle timeout by default. The initial choice uses the router's configured WAN weights.
+The default follows OPNsense's sticky-connections policy: choose a WAN for the source, keep using it while states belonging to that mapping remain active, and release the association once a complete connection-state check proves them gone. There's no extra idle timeout by default. The initial choice uses the router's configured WAN weights.
 
 [b]What happens on failover?[/b]
 [list]
@@ -26,7 +26,7 @@ This is an early release tested on my [b]RT-AX88U running Merlin 3004.388.12_2[/
 
 A 30-second primary-WAN download comparison measured about [b]638 Mb/s bypassing admission versus 632 Mb/s through affinity[/b], with increasing hardware flow counters, all 60 new-connection probes succeeding, and no queue drops. That's one wired client and one download stream over the Internet, not a maximum-throughput or aggregate dual-WAN claim. The qualification notes include the full method and timing outliers.
 
-The installer starts disabled. Busy clients with mixed pre-existing WAN connections may stay under firmware balancing until those states drain. Other hardware/firmware, an actual reboot/firmware upgrade, and arbitrary VPN policy combinations haven't been fully qualified.
+The installer starts disabled. Busy clients with mixed pre-existing WAN connections become sticky for new connections immediately; existing connections retain their WANs and NAT mappings. This works in both modes, with a verified same-boot RAM checkpoint for helper restarts. Other hardware/firmware, an actual reboot/firmware upgrade, and arbitrary VPN policy combinations haven't been fully qualified.
 
 [url=https://github.com/aiordanescu/asuswrt-merlin-tools/tree/main/wan-affinity]Source, installation, rollback and qualification notes[/url]
 

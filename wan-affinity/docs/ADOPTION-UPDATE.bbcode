@@ -1,0 +1,9 @@
+[b]WAN Affinity 0.4.2: adoption fix for always-on devices[/b]
+
+Mixed connections already open on both WANs no longer leave a device waiting indefinitely to become sticky. In [b]both sticky and affinity modes[/b], the next new connection establishes the WAN choice and subsequent new connections follow it. Existing connections retain their WANs and NAT mappings.
+
+Mapping lifetime now tracks the connections belonging to that mapping separately from older sessions. A private RAM checkpoint also restores verified mappings through helper restarts.
+
+Tested on the live RT-AX88U with a separate Mac mini test: two existing HTTPS connections on different WANs, 16 concurrent new connections sharing one WAN, then a helper restart and further new connections. Both modes passed and the existing connections kept their identities, marks and NAT addresses.
+
+[url=https://github.com/aiordanescu/asuswrt-merlin-tools/tree/main/wan-affinity]Updated downloads and installation instructions[/url]

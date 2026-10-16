@@ -31,6 +31,7 @@
  */
 #define _GNU_SOURCE
 #include "wa_engine.h"
+#include "wa_checkpoint.h"
 #include "wa_conntrack.h"
 #include "wa_nl_frame.h"
 #include "wa_worker.h"
@@ -61,7 +62,7 @@
 #include <time.h>
 #include <unistd.h>
 
-#define WA_VERSION "0.4.1"
+#define WA_VERSION "0.4.2"
 static wa_health_feed health_feed;
 
 static volatile sig_atomic_t stopping;
@@ -584,6 +585,7 @@ static int apply_observation(wa_engine *e,const wa_observation *o,double now) {
     for(int i=0;i<o->view.count;i++) {
         const wa_ct_record *row=&o->view.rows[i];wa_state *st=&states[i];memset(st,0,sizeof *st);
         st->ctid=wa_flow_token(e,row->proto,row->src,row->dst,row->sport,row->dport);
+        st->kernel_id=row->kernel_id;
         st->src=row->src;st->dst=row->dst;st->sport=row->sport;st->dport=row->dport;st->proto=row->proto;
         st->wan=(int8_t)wa_ct_egress(row,&e->health);kernel_unconfirmed+=row->unconfirmed;
     }
@@ -625,6 +627,15 @@ static void write_status(wa_engine *e, const wa_config *c) {
 /* main loop: no command execution or waiting for command children      */
 /* ------------------------------------------------------------------ */
 
+static uint64_t checkpoint_profile(const wa_engine *e,const wa_config *c) {
+    char text[256];
+    snprintf(text,sizeof text,"%d:%d:%s:%08x/%08x:%s",e->mode,c->lan_scope,c->client,
+             e->lan.net,e->lan.mask,e->affinity_seed);
+    uint64_t h=UINT64_C(1469598103934665603);
+    for(const unsigned char *p=(const unsigned char *)text;*p;p++){h^=*p;h*=UINT64_C(1099511628211);}
+    return h;
+}
+
 static void run(wa_engine *e, wa_config *c) {
     mkdir(c->status_dir, 0700);
     wa_health_feed_init(&health_feed,e,c->health_source,c->health_socket,c->status_dir);
@@ -640,6 +651,15 @@ static void run(wa_engine *e, wa_config *c) {
     }
     if(initial!=1 || apply_observation(e,&observation,mono())) {
         wa_worker_cancel(&job);fprintf(stderr,"initial full connection view invalid; refusing admission\n");return;
+    }
+    char mapping_cache[200];uint8_t mapping_boot[16];
+    snprintf(mapping_cache,sizeof mapping_cache,"%s/mappings.cache",c->status_dir);
+    int checkpoint_enabled=!wh_boot(mapping_boot);
+    uint64_t profile=checkpoint_profile(e,c),saved_binding=e->next_binding_id,saved_epoch=e->epoch;
+    if(checkpoint_enabled) {
+        int restored=wa_checkpoint_load(mapping_cache,e,mapping_boot,profile,wh_now());
+        fprintf(stderr,"source mapping checkpoint: %s\n",restored>0?"restored":restored<0?"rejected":"fresh start");
+        wa_checkpoint_save(mapping_cache,e,mapping_boot,profile,wh_now());
     }
     int queue_fd=bind_queue(c);
     double next_reconcile=mono()+c->reconcile_interval,next_status=mono()+1;
@@ -779,6 +799,7 @@ static void run(wa_engine *e, wa_config *c) {
                     last_refresh_ms=(observation.completed-observation.facts_started)*1000;
                     if(last_refresh_ms>max_refresh_ms)max_refresh_ms=last_refresh_ms;
                     wa_tick(e,mono());
+                    if(checkpoint_enabled)wa_checkpoint_save(mapping_cache,e,mapping_boot,profile,wh_now());
                 }
                 write_status(e,c);
             }
@@ -791,6 +812,11 @@ static void run(wa_engine *e, wa_config *c) {
             next_reconcile=t+c->reconcile_interval;
             refresh_pid=job.pid;
         }
+        if(checkpoint_enabled && (saved_binding!=e->next_binding_id || saved_epoch!=e->epoch)) {
+            if(!wa_checkpoint_save(mapping_cache,e,mapping_boot,profile,wh_now())) {
+                saved_binding=e->next_binding_id;saved_epoch=e->epoch;
+            }
+        }
         if(t>=next_status){wa_tick(e,t);write_status(e,c);next_status=t+1;}
     }
     wa_worker_cancel(&job);
@@ -801,6 +827,7 @@ static void run(wa_engine *e, wa_config *c) {
         struct timespec brief={0,10000000L};nanosleep(&brief,NULL);
     }
     close(queue_fd);write_status(e,c);
+    if(checkpoint_enabled)wa_checkpoint_save(mapping_cache,e,mapping_boot,profile,wh_now());
     wh_client_close(&health_feed.client,wh_now());
 }
 

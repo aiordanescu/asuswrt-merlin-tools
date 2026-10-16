@@ -33,7 +33,7 @@ class RestartTests(unittest.TestCase):
         self.assertTrue(engine.assoc["192.168.1.90"].adopted)
         self.assertEqual(engine.assoc["192.168.1.91"].wan, 1)
 
-    def test_mixed_wan_flows_are_deferred(self):
+    def test_mixed_wan_flows_admit_new_connections(self):
         engine = self._reconstruct(
             [
                 make_state("c1", "192.168.1.92", INTERNET, wan=0),
@@ -43,8 +43,9 @@ class RestartTests(unittest.TestCase):
         self.assertIn("192.168.1.92", engine.transitional)
         self.assertNotIn("192.168.1.92", engine.assoc)
         result = engine.admission_decision(make_packet("c3", src="192.168.1.92"))
-        self.assertEqual(result.action, "pass")
-        self.assertEqual(result.reason, "transitional-adoption")
+        self.assertEqual(result.action, "mark")
+        self.assertEqual(result.reason, "selected-mixed")
+        self.assertNotIn("192.168.1.92", engine.transitional)
 
     def test_unattributed_flows_are_deferred(self):
         engine = self._reconstruct([make_state("c1", "192.168.1.93", INTERNET, wan=None)])

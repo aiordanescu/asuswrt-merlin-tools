@@ -182,3 +182,25 @@ The diagnostic generator's `roundtrip COUNT BASEPORT PORT` command reports
 average, p95 and maximum echo latency. Locally generated packets do not always
 have an NFQUEUE timestamp, so loopback timing uses those actual round trips.
 See [the measured results](../docs/LIFECYCLE-FIX-2026-10-15.md).
+
+## Mixed-session adoption beside the production service
+
+`run_adoption.py` requires the authorized `alexs-mac-mini` client and its exact
+Primary GUI pin. It refuses occupied private queues and test port ranges.
+It arms an independent router-local cleanup guard before temporarily removing
+that client's pin. Production affinity and watchdog remain running.
+
+```sh
+python3 router-tests/run_adoption.py --allow-client-test \
+  --evidence /absolute/private/evidence
+```
+
+For each mode it keeps two real HTTPS connections alive on different WANs,
+opens 16 concurrent new HTTPS connections, restarts the private helper while
+members survive, and checks two further new connections. Old kernel identities,
+marks and NAT addresses must remain exact. Queue 20881 and selected source
+ports enter a private chain; `WA_TESTING` limits its observations to those ports.
+Cleanup verifies restored pins, rules and hooks. Firewall comparisons ignore
+only live chain counters and generated timestamp comments. The driver never
+flushes conntrack or stops a production service. Allow its test ports to expire
+before another run. See the [adoption report](../docs/ADOPTION-2026-10-15.md).

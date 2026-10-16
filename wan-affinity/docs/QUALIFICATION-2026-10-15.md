@@ -104,14 +104,21 @@ a healthy helper to keep its PID across multiple supervisor intervals, before
 checking intentional crash/stall recovery. This was a real rollout finding,
 not a claim that the earlier short controller tests covered steady supervision.
 
+## Adoption update
+
+[Version 0.4.2](ADOPTION-2026-10-15.md) supersedes the mixed-source deferral in
+the initial rollout below. Both modes now bind new connections immediately,
+track mapping members separately from legacy connections, and restore verified
+mappings after same-boot helper restarts. The linked report records new tests.
+
 ## Guarded LAN rollout
 
 The installed configuration uses sticky mode, zero extra idle retention,
 whole-LAN scope, supervision and `HEALTH_SOURCE=watchdog`. A router-local timed
 disable guard protects initial rollout independently of SSH. Existing GUI pins
 are retained; the Mac mini's temporary test pin changes are separately restored.
-Mixed pre-existing sources remain transitional under firmware balancing rather
-than forcing a conflicting association.
+That initial version left mixed pre-existing sources transitional until idle;
+the 0.4.2 adoption update above removes that limitation.
 
 The corrected service retained one helper PID throughout the final live check.
 Nine Mac mini forwarding checks passed (four HTTPS public-address checks, two

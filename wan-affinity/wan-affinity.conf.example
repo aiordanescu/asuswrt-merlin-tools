@@ -6,7 +6,7 @@
 # Master switch. The controller refuses to activate while this is 0.
 ENABLED=0
 
-# sticky  = retain the WAN across recovery; release after full tracked idle
+# sticky  = retain the WAN across recovery; release after its last member ends
 # affinity = deterministic per-LAN-IP WAN preference, returns after recovery
 MODE=sticky
 
@@ -27,7 +27,8 @@ QUEUE_MAXLEN=1024
 
 # Lifecycle timing.
 # IDLE_SECONDS=0 releases after a complete unconfirmed-then-confirmed view
-# proves relevant states gone. Admissions during collection are retained.
+# proves mapping members gone. Older mixed sessions do not block adoption
+# or extend a new mapping. Admissions during collection are retained.
 IDLE_SECONDS=0
 MAX_RECONCILE_SECONDS=15
 PROVISIONAL_WARNING_SECONDS=2

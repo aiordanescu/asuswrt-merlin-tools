@@ -23,7 +23,7 @@ existing ownership/transition purpose.
 ## Download and qualification
 
 Download **`wan-watchdog-aarch64.tar.gz`** and **`SHA256SUMS`** from the
-[prebuilt beta release](https://github.com/aiordanescu/asuswrt-merlin-tools/releases/tag/wan-tools-2026.10.15-beta.3)
+[prebuilt beta release](https://github.com/aiordanescu/asuswrt-merlin-tools/releases/tag/wan-tools-2026.10.15-beta.4)
 to your computer. No compiler, Python or Entware is needed on the router.
 Target: **aarch64 Linux**, tested on RT-AX88U / Merlin 3004.388.12_2.
 Compare the archive's SHA-256 with its entry in `SHA256SUMS`, for example on

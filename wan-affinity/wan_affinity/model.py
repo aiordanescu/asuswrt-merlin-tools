@@ -197,6 +197,7 @@ class State:
     provisional: bool = False
     created_mono: float = 0.0
     updated_mono: float = 0.0
+    binding_id: int = 0  # -1: pre-existing; positive: source mapping membership
 
     def relevant_in(self, domain: Domain) -> bool:
         return state_is_relevant(self, domain)
@@ -208,6 +209,7 @@ class Association:
     wan: int
     epoch: int
     created_mono: float
+    binding_id: int = 0
     preferred_wan: Optional[int] = None  # affinity: persistent preference
     adopted: bool = False
     failovers: int = 0
