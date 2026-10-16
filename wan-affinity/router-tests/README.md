@@ -41,6 +41,35 @@ private directory. No blanket state flush, real WAN failure or NVRAM commit is
 used. The health consumer executable `build/test_health_socket` exercises a
 private Unix socket without installing a firewall rule.
 
+## Admission stalls and blocked checkpoints
+
+`run_stalls.py` uses the production executable, queue 20894 and synthetic UDP
+from `127.88.0.2` to `127.88.0.1:58994`. The private controller copy changes its
+chain hook from PREROUTING to OUTPUT and ingress to egress; a read-only iptables
+shim supplies a virtual balance anchor. Actual queue operations, verdicts,
+supervision, restart and ownership cleanup still use the real kernel and code.
+No household admission rule, health state or WAN is faulted.
+
+```sh
+zig cc -target aarch64-linux-musl -static -O2 -Wall -Wextra -Werror \
+  router-tests/nfq_probe.c -o /absolute/local/nfq-probe
+python3 router-tests/run_stalls.py --allow-loopback-tests \
+  --probe /absolute/local/nfq-probe --trials 12 --soak-seconds 90 \
+  --evidence /absolute/private/evidence
+```
+
+An independent 900-second cleanup guard is armed first. A FIFO blocks only the
+private checkpoint writer while new tuples and a confirmed echo flow continue.
+The driver also checks recovery while the controller lock is held, repeated
+single-packet freezes, a frozen idle helper followed
+by one arrival, SIGKILL bypass, the three-stall circuit breaker, explicit restart
+and production PID/rule/pin/hook preservation. Source ports are below Linux's
+usual ephemeral range to avoid collisions with the router's own sockets.
+It records each sample and median/p95/maximum rather than only an average. The
+confirmed UDP flow spans the pressure and fault tests; the Mini adoption driver
+separately checks preservation of real HTTPS sessions in both placement modes.
+See [the qualification report](../docs/RECOVERY-2026-10-16.md).
+
 ## Sustained primary-WAN download (live service)
 
 `run_throughput.py` requires an **already healthy, LAN-wide production sticky

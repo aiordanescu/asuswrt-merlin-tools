@@ -68,6 +68,8 @@ For the engine and checkpoint sanitizer checks on macOS/Linux:
 make sanitize
 ```
 
-The target disables inlining for the test executable so AddressSanitizer does
-not combine the large stack-local test engines into one oversized stack frame.
-The production daemon uses a static engine.
+The sanitizer target uses the normal compiler inlining settings. Large test
+engines have static storage so AddressSanitizer can run with the default stack
+limit. The production daemon also uses a static engine. `make host-tests`
+additionally checks checkpoint coalescing, recovery thresholds, queue bursts,
+low-traffic freezes and the restart circuit breaker with synthetic time.

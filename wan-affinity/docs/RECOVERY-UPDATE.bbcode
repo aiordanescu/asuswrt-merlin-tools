@@ -1,0 +1,10 @@
+[b]WAN Affinity 0.4.5: smoother checkpointing and faster recovery[/b]
+
+Checkpoint saves now run in a separate, rate-limited process, keeping that work out of connection admission. The supervisor also checks for stalled progress and pending packets once a second, including a quiet connection with just one packet waiting. Brief bursts don't trigger a restart; repeated stalls leave firmware balancing in charge until an explicit start.
+
+Established connections still bypass the helper. A stalled helper can delay new connections, and packets already held can be lost during recovery, so TCP/application retries still matter.
+
+[url=https://github.com/aiordanescu/asuswrt-merlin-tools/releases/tag/wan-tools-2026.10.16-beta.1]Prebuilt downloads and release notes[/url]
+[url=https://github.com/aiordanescu/asuswrt-merlin-tools/blob/main/wan-affinity/docs/RECOVERY-2026-10-16.md]Tests, recovery timings and limitations[/url]
+
+Default sticky behavior is unchanged. The update was qualified alongside the live service before a guarded upgrade; no deliberate household WAN outage was used.

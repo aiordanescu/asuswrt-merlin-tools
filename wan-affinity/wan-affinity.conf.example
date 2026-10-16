@@ -16,8 +16,9 @@ CLIENT=192.168.1.100
 LAN_SCOPE=0
 ALLOW_LAN_SCOPE=0
 
-# Repair lost owned rules/restart an exited helper every 10 seconds; a stalled
-# status heartbeat triggers a bounded restart after two unchanged observations.
+# Independent 1-second queue/progress checks: recover after 5 seconds without
+# progress plus a pending packet for 1 second. Rule repair remains every 10s.
+# Three stalls in 60s leave firmware in charge until an explicit start.
 # stop remains stopped until start (or the next boot); disable persists.
 SUPERVISE=1
 

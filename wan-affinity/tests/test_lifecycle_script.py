@@ -227,6 +227,36 @@ open(proc+'/net/netfilter/nfnetlink_queue','w').close()
         self.assertIn('invalid MODE',r.stderr)
         self.assertEqual(self._chains()['PREROUTING'],[["-j","balance"]])
 
+    def test_tripped_supervisor_leaves_firmware_in_control_despite_invalid_config(self):
+        self._write_config(enabled=1)
+        with open(self.cfg,'a') as fh:fh.write("MODE='broken\n")
+        self._seed([["-j","balance"],["-i","br0","-j","WA_ADMIT"]],extra_chains={"WA_ADMIT":[["-j","RETURN"]]})
+        open(os.path.join(self.run_dir,"supervisor-tripped"),'w').close()
+        self.assertEqual(self._run('reconcile').returncode,0)
+        self.assertEqual(self._chains()['PREROUTING'],[["-j","balance"]])
+        self.assertIn('supervisor-tripped',self._run('status').stdout)
+
+    def test_late_recovery_cannot_retrip_an_explicit_start(self):
+        self._write_config(enabled=1);self._running_binary()
+        self._seed([["-i","br0","-j","balance"]])
+        self.assertEqual(self._run('start').returncode,0)
+        with open(os.path.join(self.run_dir,'wan-affinity.pid')) as fh:pid=fh.read()
+        self.assertEqual(self._run('recover-stop').returncode,0)
+        self.assertIn('WA_ADMIT',self._chains())
+        with open(os.path.join(self.run_dir,'wan-affinity.pid')) as fh:self.assertEqual(pid,fh.read())
+        self.assertEqual(self._run('stop').returncode,0)
+
+    def test_only_explicit_start_clears_supervisor_trip(self):
+        self._write_config(enabled=1);self._running_binary()
+        self._seed([["-i","br0","-j","balance"]])
+        os.makedirs(self.run_dir,exist_ok=True)
+        trip=os.path.join(self.run_dir,'supervisor-tripped');open(trip,'w').close()
+        self.assertEqual(self._run('reconcile').returncode,0)
+        self.assertTrue(os.path.exists(trip));self.assertNotIn('WA_ADMIT',self._chains())
+        r=self._run('start');self.assertEqual(r.returncode,0,r.stderr)
+        self.assertFalse(os.path.exists(trip));self.assertIn('WA_ADMIT',self._chains())
+        self.assertEqual(self._run('stop').returncode,0)
+
     def test_disable_from_management_scope(self):
         self._write_config(enabled=1)
         self._seed([["-j","balance"],["-i","br0","-j","WA_ADMIT"]],extra_chains={"WA_ADMIT":[["-j","RETURN"]]})

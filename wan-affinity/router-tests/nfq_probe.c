@@ -3,6 +3,7 @@
  * the production router implementation of the Python association engine.
  */
 #define _GNU_SOURCE
+#include "../src/wa_nl_frame.h"
 #include <arpa/inet.h>
 #include <errno.h>
 #include <linux/netfilter.h>
@@ -16,6 +17,7 @@
 #include <stdlib.h>
 #include <string.h>
 #include <sys/socket.h>
+#include <sys/stat.h>
 #include <sys/time.h>
 #include <sys/wait.h>
 #include <time.h>
@@ -60,9 +62,9 @@ static void send_message(int fd, struct nlmsghdr *h, int ack) {
         if (poll(&p, 1, 2000) <= 0) { fprintf(stderr,"netlink ACK timeout\n"); exit(1); }
         ssize_t got = recv(fd, buf, sizeof buf, 0);
         if (got < 0) die("netlink ACK recv");
-        unsigned n = got;
-        for (struct nlmsghdr *r = (void *)buf; NLMSG_OK(r,n); r = NLMSG_NEXT(r,n)) {
-            if (r->nlmsg_type == NLMSG_ERROR && r->nlmsg_seq == seq) {
+        size_t offset=0;struct nlmsghdr *r;
+        while((r=(void *)wa_nl_frame(buf,(size_t)got,&offset))) {
+            if (r->nlmsg_type == NLMSG_ERROR && r->nlmsg_seq == seq && r->nlmsg_len>=NLMSG_LENGTH(sizeof(struct nlmsgerr))) {
                 struct nlmsgerr *e = NLMSG_DATA(r);
                 if (e->error) { errno = -e->error; die("netlink configuration"); }
                 return;
@@ -134,10 +136,11 @@ static void bridge(unsigned queue, unsigned seconds, unsigned maxlen, int probe)
         if(p[0].revents&POLLIN) {
             char buf[65536]; ssize_t got=recv(fd,buf,sizeof buf,0);
             if(got<0)die("packet recv");
-            unsigned n=got;
-            for(struct nlmsghdr *h=(void *)buf;NLMSG_OK(h,n);h=NLMSG_NEXT(h,n)) {
+            size_t offset=0;struct nlmsghdr *h;
+            while((h=(void *)wa_nl_frame(buf,(size_t)got,&offset))) {
+                if(h->nlmsg_len<NLMSG_LENGTH(sizeof(struct nfgenmsg)))continue;
                 if(h->nlmsg_type==((NFNL_SUBSYS_QUEUE<<8)|NFQNL_MSG_PACKET)) packet(h);
-                else if(h->nlmsg_type==NLMSG_ERROR) {
+                else if(h->nlmsg_type==NLMSG_ERROR && h->nlmsg_len>=NLMSG_LENGTH(sizeof(struct nlmsgerr))) {
                     struct nlmsgerr *e=NLMSG_DATA(h);
                     if(e->error) {errno=-e->error;die("verdict ACK");}
                 }
@@ -227,13 +230,38 @@ static void roundtrip_udp(unsigned count,unsigned base,unsigned port) {
     printf("{\"count\":%u,\"average_ms\":%.3f,\"p95_ms\":%.3f,\"max_ms\":%.3f}\n",
            count,total/count,times[(count*95+99)/100-1],times[count-1]);
 }
+/* One confirmed socket keeps sending while a different admission is frozen. */
+static void steady_udp(unsigned seconds,unsigned base,unsigned port) {
+    if(seconds>600 || base>65535 || !seconds)exit(2);
+    int fd=udp_socket("127.88.0.2",base);
+    struct sockaddr_in dst={.sin_family=AF_INET,.sin_port=htons(port)};
+    inet_pton(AF_INET,"127.88.0.1",&dst.sin_addr);
+    double end=mono()+seconds,max_ms=0;unsigned sent=0,lost=0;
+    while(!stopping && mono()<end) {
+        double start=mono();
+        if(sendto(fd,"WA_TEST",7,0,(void *)&dst,sizeof dst)!=7)die("steady send");
+        sent++;struct pollfd p={fd,POLLIN,0};
+        int ready=poll(&p,1,200);
+        if(ready<0 && stopping)break;
+        if(ready!=1)lost++;
+        else {char b;recv(fd,&b,1,0);double ms=(mono()-start)*1000;if(ms>max_ms)max_ms=ms;}
+        struct timespec pause={0,50000000};nanosleep(&pause,NULL);
+    }
+    printf("{\"sent\":%u,\"lost\":%u,\"max_ms\":%.3f}\n",sent,lost,max_ms);close(fd);
+}
 int main(int argc,char **argv) {
     signal(SIGTERM,stop);signal(SIGINT,stop);signal(SIGPIPE,SIG_IGN);
-    if(argc==3 && !strcmp(argv[1],"probe"))bridge(atoi(argv[2]),2,16,1);
+    if(argc==3 && !strcmp(argv[1],"fifo")) {
+        const char *suffix="/run/mappings.cache.new";size_t n=strlen(argv[2]),m=strlen(suffix);
+        if(strncmp(argv[2],"/tmp/wa-stall-",14) || strstr(argv[2],"..") || n<m || strcmp(argv[2]+n-m,suffix))return 2;
+        if(mkfifo(argv[2],0600))die("test fifo");
+    }
+    else if(argc==3 && !strcmp(argv[1],"probe"))bridge(atoi(argv[2]),2,16,1);
     else if(argc==5 && !strcmp(argv[1],"bridge"))bridge(atoi(argv[2]),atoi(argv[3]),atoi(argv[4]),0);
     else if(argc==4 && !strcmp(argv[1],"sink"))sink(atoi(argv[2]),atoi(argv[3]));
     else if(argc==5 && !strcmp(argv[1],"send"))send_udp(atoi(argv[2]),atoi(argv[3]),atoi(argv[4]));
     else if(argc==6 && !strcmp(argv[1],"parallel"))parallel_udp(atoi(argv[2]),atoi(argv[3]),atoi(argv[4]),atoi(argv[5]));
+    else if(argc==5 && !strcmp(argv[1],"steady"))steady_udp(atoi(argv[2]),atoi(argv[3]),atoi(argv[4]));
     else if(argc==5 && !strcmp(argv[1],"roundtrip"))roundtrip_udp(atoi(argv[2]),atoi(argv[3]),atoi(argv[4]));
     else {fprintf(stderr,"probe QUEUE | bridge QUEUE SECONDS MAXLEN | sink SECONDS PORT | send COUNT BASEPORT PORT | parallel WORKERS COUNT BASEPORT PORT\n");return 2;}
     return 0;

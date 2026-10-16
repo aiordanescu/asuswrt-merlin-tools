@@ -218,8 +218,13 @@ monitor_alive() {
     read _mp <"$MONPID"
     case "$_mp" in ''|*[!0-9]*) return 1 ;; esac
     kill -0 "$_mp" 2>/dev/null || return 1
-    [ "$(tr '\000' '\n' <"$WA_PROC/$_mp/cmdline" 2>/dev/null | sed -n '2,3p')" = "$SELF
-watch" ]
+    _monitor_args=$(tr '\000' '\n' <"$WA_PROC/$_mp/cmdline" 2>/dev/null)
+    # Accept the shell bootstrap and its exec'd independent supervisor.
+    [ "$(printf '%s\n' "$_monitor_args" | sed -n '2,3p')" = "$SELF
+watch" ] || [ "$(printf '%s\n' "$_monitor_args" | sed -n '1,4p')" = "$BIN
+--supervise
+$SELF
+$RUN" ]
 }
 start_monitor() {
     [ "$SUPERVISE" = 1 ] || return 0
@@ -240,6 +245,10 @@ cmd_start() {
         # Restore ordinary firmware traversal before attempting to restart a
         # missing helper, even if activation settings have since become invalid.
         if ! helper_alive; then remove_rules || fail 'could not remove abandoned admission rules'; fi
+        if [ -f "$RUN/supervisor-tripped" ]; then
+            remove_rules && stop_helper || fail 'could not leave firmware in control'
+            return 0
+        fi
         if config_disabled; then cmd_stop; return 0; fi
         [ ! -f "$RUN/stopped" ] || return 0
     fi
@@ -247,7 +256,7 @@ cmd_start() {
     if [ "${1:-start}" = reconcile ]; then
         if [ "$ENABLED" != 1 ]; then cmd_stop; return 0; fi
     else
-        rm -f "$RUN/stopped"
+        rm -f "$RUN/stopped" "$RUN/supervisor-tripped"
     fi
     [ "$ENABLED" = 1 ] || fail 'disabled in config; refusing activation'
     validate_config
@@ -272,6 +281,7 @@ cmd_start() {
     stop_helper || fail 'could not stop prior helper'
     NEW_HELPER=1
     start_helper || fail 'helper readiness failed'
+    [ ! -f "$RUN/supervisor-tripped" ] || fail 'supervisor stopped repeated recovery attempts'
     build_chain || fail 'chain construction failed'
     insert_jump || fail 'jump insertion failed'
     printf '%s\n' "$_config" >"$RUN/config.signature"
@@ -286,28 +296,11 @@ cmd_stop() {
     stop_helper || fail 'helper stop failed'; say stopped
 }
 cmd_watch() {
-    trap 'exit 0' TERM INT
-    _seen=
-    while :; do
-        sleep 10 & wait $! || exit 0
-        [ -r "$MONPID" ] && [ "$(cat "$MONPID")" = "$$" ] || exit 0
-        [ ! -f "$RUN/stopped" ] || exit 0
-        _current=$(sed -n 's/.*loop_mono_ns=\([0-9][0-9]*\).*/\1/p' "$RUN/status" 2>/dev/null)
-        _current=${_current:-missing}
-        if [ -n "$_seen" ] && [ "$_current" = "$_seen" ]; then
-            touch "$RUN/restart-request"
-            say 'status stopped advancing; requesting bounded helper restart'
-        fi
-        _seen=$_current
-        # Rotate only our RAM logs. No frequent writes go to JFFS.
-        for _log in "$LOG" "$RUN/supervisor.log"; do
-            [ ! -f "$_log" ] || [ "$(wc -c <"$_log")" -lt 262144 ] || : >"$_log"
-        done
-        sh "$SELF" reconcile || true
-    done
+    exec "$BIN" --supervise "$SELF" "$RUN" "$BIN"
 }
 cmd_status() {
     if helper_alive; then say "helper running pid=$(cat "$PIDF")"; else say 'helper not running'; fi
+    [ ! -f "$RUN/supervisor-tripped" ] || say 'supervisor-tripped: firmware balancing; explicit start required'
     say "jumps=$(owned_jumps)"; [ ! -r "$RUN/status" ] || cat "$RUN/status"
     return 0
 }
@@ -317,6 +310,7 @@ case "${1:-}" in
  reconcile) cmd_start reconcile ;;
  restart) cmd_stop; cmd_start ;;
  watch) cmd_watch ;;
+ recover-stop) control_lock; [ -f "$RUN/supervisor-tripped" ] || exit 0; remove_rules && stop_helper ;;
  status) cmd_status ;;
  stop) cmd_stop ;;
  cleanup) cmd_stop; rm -f "$RUN/status" "$RUN/status.new" "$LOG" ;;

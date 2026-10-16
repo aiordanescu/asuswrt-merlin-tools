@@ -1,14 +1,14 @@
 # Prebuilt WAN tools
 
-[WAN tools — 2026-10-15 beta](https://github.com/aiordanescu/asuswrt-merlin-tools/releases/tag/wan-tools-2026.10.15-beta.7)
+[WAN tools — 2026-10-16 beta](https://github.com/aiordanescu/asuswrt-merlin-tools/releases/tag/wan-tools-2026.10.16-beta.1)
 provides static **aarch64 Linux** bundles. No compiler, Python or Entware is
 needed on the router. Tested target: RT-AX88U, Asuswrt-Merlin 3004.388.12_2,
 Linux 4.1.51. This is not a build for 32-bit ARM, MIPS or every Merlin model.
 
 | Download | Included production binaries | Installation |
 | --- | --- | --- |
-| [wan-affinity-aarch64.tar.gz](https://github.com/aiordanescu/asuswrt-merlin-tools/releases/download/wan-tools-2026.10.15-beta.7/wan-affinity-aarch64.tar.gz) | `wan-affinity` (0.4.4), controller, installer, disabled example, rollback and guides | [Affinity instructions](wan-affinity/README.md#download-and-install) |
-| [wan-watchdog-aarch64.tar.gz](https://github.com/aiordanescu/asuswrt-merlin-tools/releases/download/wan-tools-2026.10.15-beta.7/wan-watchdog-aarch64.tar.gz) | `wan-watchdog`, `wan-healthctl`, shell actuator/reference, installer and rollback | [WAN Watchdog instructions](wan-watchdog/GUIDE.md#download-and-qualification) |
+| [wan-affinity-aarch64.tar.gz](https://github.com/aiordanescu/asuswrt-merlin-tools/releases/download/wan-tools-2026.10.16-beta.1/wan-affinity-aarch64.tar.gz) | `wan-affinity` (0.4.5), controller, installer, disabled example, rollback and guides | [Affinity instructions](wan-affinity/README.md#download-and-install) |
+| [wan-watchdog-aarch64.tar.gz](https://github.com/aiordanescu/asuswrt-merlin-tools/releases/download/wan-tools-2026.10.16-beta.1/wan-watchdog-aarch64.tar.gz) | `wan-watchdog`, `wan-healthctl`, shell actuator/reference, installer and rollback | [WAN Watchdog instructions](wan-watchdog/GUIDE.md#download-and-qualification) |
 
 The components remain independently installed and operated. The shell watchdog
 and Namecheap DDNS helper do not need compilation. Test executables and fixture
@@ -41,6 +41,26 @@ Affinity's installer starts disabled. The watchdog installer requires healthy
 monitoring on both WANs and no active override. Use `--install` for handoff from a
 reviewed shell reference or `--upgrade` for an installed monitor; its supported
 settings are saved in private `service.conf` and retained through recovery.
+
+## Changes on 2026-10-16 (beta.1)
+
+WAN Affinity 0.4.5 keeps checkpoint writes out of packet admission and shortens
+recovery of a stalled helper. The watchdog is unchanged from the October 15
+beta.7 package.
+
+- A separate child saves coalesced RAM checkpoints at most once every five
+  seconds. Its two-second timeout never waits for disk I/O in admission.
+- An independent supervisor checks progress and the kernel queue once a second.
+  Recovery requires five seconds without status progress and a pending packet
+  for one second. One packet is sufficient; short busy bursts do not qualify.
+- The supervisor closes a stuck queue before invoking the lifecycle controller.
+  Three stalls in 60 seconds leave firmware balancing in charge until `start`.
+- Status adds checkpoint counts/durations and netlink receive-overrun counts.
+- The recovery guide distinguishes already-held packets, queue-full arrivals,
+  absent-listener bypass and confirmed flows, with measured fault-test results.
+
+See [the recovery report](wan-affinity/docs/RECOVERY-2026-10-16.md) for the test
+scope, distributions and limitations. Optional source builds remain supported.
 
 ## Changes in beta.7
 
@@ -92,16 +112,15 @@ run that rollback again; each run restarts the healthy shell.
 
 ## Verification for this release
 
-Affinity 0.4.4 passes 289 engine/checkpoint C checks (also under ASan/UBSan),
-21 worker C checks and 107 Python tests on the tagged source. On the tested
-router, with the production service running, the new helper passed the loopback
-lifecycle regression and the mixed-session adoption matrix in both modes with
-real HTTPS connections. It read the router's real routes, rules and pins and
-reported `domain=ok local_prefixes=11/64 policy_selectors=20/128`. The packaged
-helper then replaced the production service through `install.sh --upgrade`. It
-restarted with its mappings restored and both WANs eligible, and firewall
-rules, policy rules and hooks were unchanged. The over-capacity paths are
-host-tested only.
+Affinity 0.4.5 passes 289 engine/checkpoint C checks (also under ASan/UBSan),
+21 worker C checks, the supervisor/checkpoint scheduling C suite (also sanitized)
+and 110 Python tests. The router qualification covers blocked checkpoint I/O,
+repeated single-packet freezes and SIGKILL bypass, a confirmed flow throughout,
+restart-budget enforcement and real Mini HTTPS adoption/restart in both modes.
+The [recovery report](wan-affinity/docs/RECOVERY-2026-10-16.md) records each test
+scope and measured distributions. The production update uses the supported
+installer under an independent rollback guard, with before/after checks of
+firewall rules, routing policy, pins and hooks.
 
 The watchdog executables are byte-identical to beta.5 and its scripts to
 beta.6. They pass 82 shell/DDNS/lifecycle tests, 11 adapter/parity tests and

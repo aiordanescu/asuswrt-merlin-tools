@@ -72,7 +72,8 @@ described under [operations and rollback](#operations-and-rollback).
 
 The [maintenance notes](../MAINTENANCE-2026-10-15.md) cover the 0.4.3
 lifecycle repairs, the kernel fallback verification and the 0.4.4 capacity
-handling.
+handling. The [0.4.5 recovery report](docs/RECOVERY-2026-10-16.md) covers
+checkpoint scheduling and independent stall recovery.
 
 ## Routing boundaries
 
@@ -107,7 +108,7 @@ flushed on failover, recovery, stop, upgrade, or uninstall.
 No Entware dependency or router firmware rebuild is required for the tested
 static aarch64 binary. Download **`wan-affinity-aarch64.tar.gz`** and
 **`SHA256SUMS`** from the
-[prebuilt beta release](https://github.com/aiordanescu/asuswrt-merlin-tools/releases/tag/wan-tools-2026.10.15-beta.7)
+[prebuilt beta release](https://github.com/aiordanescu/asuswrt-merlin-tools/releases/tag/wan-tools-2026.10.16-beta.1)
 to your computer. This build targets **aarch64 Linux** and was tested on the
 RT-AX88U / Merlin 3004.388.12_2. Compare the archive's checksum with its entry
 in `SHA256SUMS` (on macOS):
@@ -117,7 +118,7 @@ shasum -a 256 wan-affinity-aarch64.tar.gz
 ```
 
 On Linux use `sha256sum`. See
-[release and verification details](https://github.com/aiordanescu/asuswrt-merlin-tools/blob/wan-tools-2026.10.15-beta.7/RELEASES.md).
+[release and verification details](https://github.com/aiordanescu/asuswrt-merlin-tools/blob/wan-tools-2026.10.16-beta.1/RELEASES.md).
 Using an SSH alias named `router`, transfer the verified archive:
 
 ```sh
@@ -209,11 +210,23 @@ associations. A configuration change requires reconstruction and is applied by
 configuration is unchanged. `status` is informational and returns success even
 when stopped; inspect the PID, jump count and status contents.
 
-`SUPERVISE=1` checks every ten seconds, retries boot readiness, repairs lost
-rules and restarts an exited helper. Two unchanged status observations request
-a bounded restart of a stalled event loop. It can take roughly 10–20 seconds to
-detect a stall, followed by shutdown/startup time. That is process recovery,
-not a strict packet-latency guarantee during a hang.
+`SUPERVISE=1` runs an independent supervisor process from the same executable.
+It samples the helper's status progress and kernel queue once a second, without
+shell commands on each tick. Recovery requires **five seconds without status
+progress and at least one queued packet observed for one second**. A brief busy
+queue or slow checkpoint alone does not trigger a restart. An idle frozen helper
+is left alone until a packet is held; it does not need a full queue to recover.
+The supervisor verifies the helper's identity, kills the stuck process to close
+its queue independently of the controller lock, then invokes the serialized
+controller to remove admission rules and restart. Ordinary rule repair and
+configuration checks still run every ten seconds.
+
+Three stall recoveries within 60 seconds stop automatic retries. The supervisor
+removes admission rules and leaves firmware balancing in charge; status reports
+`supervisor-tripped`. Investigate the logs, then run `start` explicitly to retry.
+This RAM marker clears on reboot. These are recovery targets under normal
+scheduling, not a strict packet-latency guarantee under kernel or system stalls.
+See the [recovery qualification](docs/RECOVERY-2026-10-16.md) for measurements.
 
 `stop` removes the owned jump/chain before stopping the helper and remains
 stopped across subsequent firewall hooks. `start` explicitly clears that RAM
@@ -232,7 +245,15 @@ the path; weighted balancing and sticky placement are not guaranteed. The
 supervisor removes abandoned admission rules before attempting a restart.
 `stop` and `disable` remove the admission jump to restore normal firmware
 traversal. A blocked helper can hold queued packets until recovery/full-queue
-bypass; fail-open is not an immediate deadline for every packet.
+bypass; fail-open is not an immediate deadline for every packet. **Full-queue
+fail-open only accepts the arrival that could not be queued; it does not release
+packets already waiting.** Established, confirmed connections return before
+NFQUEUE and continue forwarding during a helper stall. For a new TCP connection,
+the usual symptom is delayed connection setup: TCP can retransmit and recover
+after bypass/restart. Application deadlines can still turn that delay into a
+visible failure. Retry timing depends on the client; it is not universally
+3/6/12 seconds. See [RFC 6298](https://www.rfc-editor.org/rfc/rfc6298.html).
+UDP applications need their own retry or recovery behavior.
 
 Upgrade an extracted bundle with `sh install.sh --upgrade`. It preserves the
 configuration and keeps one previous binary/controller/config set. If startup
@@ -288,8 +309,14 @@ conntrack entries. Monitor `uncertain`, `last_error`, `refresh_failed`, the
 A bounded worker reads firmware facts and complete U-then-C conntrack views;
 packet admission stays in the parent loop. RAM holds the frequent state and
 bounded logs. `/tmp/wan-affinity/mappings.cache` is a bounded, root-only RAM
-checkpoint, refreshed with valid observations and mapping changes. It is
-validated against boot identity, mode/scope/seed, age (at most five minutes),
+checkpoint. While admission is active, a separate, bounded child writes an
+immutable snapshot at most once every five seconds, coalescing valid observations
+and mapping changes. A two-second writer timeout and write failures never wait
+in packet admission; failures are retried at the same bounded frequency. Startup
+and shutdown may save synchronously while the queue is closed. An abrupt exit
+can lose recent checkpoint updates; safe adoption handles those misses. Status
+reports checkpoint successes, failures and durations, and receive `ENOBUFS`
+counts. The checkpoint is validated against boot identity, mode/scope/seed, age (at most five minutes),
 checksum and surviving connection identities. Invalid or missing checkpoints
 fall back to fresh adoption; they never recreate connections. No frequent
 mapping writes go to flash. Hardware acceleration is left enabled. A

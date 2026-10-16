@@ -3,7 +3,8 @@
  *
  * Single-threaded event loop over:
  *   - the NFQUEUE netlink fd        (serialized admission)
- *   - a nonblocking worker pipe    (complete U-then-C lifecycle snapshots)
+ *   - nonblocking worker pipes    (U-then-C views and RAM checkpoints)
+ *   - the watchdog health socket  (versioned eligibility updates)
  *
  * Only the bounded worker executes firmware-fact/conntrack commands. Admissions
  * and snapshot application remain serialized in the parent event loop.
@@ -35,6 +36,8 @@
 #include "wa_conntrack.h"
 #include "wa_nl_frame.h"
 #include "wa_worker.h"
+#include "wa_schedule.h"
+#include "wa_supervisor.h"
 #include "wa_health_client.h"
 #include "wa_policy.h"
 
@@ -62,7 +65,7 @@
 #include <time.h>
 #include <unistd.h>
 
-#define WA_VERSION "0.4.4"
+#define WA_VERSION "0.4.5"
 static wa_health_feed health_feed;
 
 static volatile sig_atomic_t stopping;
@@ -75,7 +78,9 @@ static int kernel_unconfirmed;
 static double last_refresh_success;
 static pid_t refresh_pid;
 static int domain_status,view_rows,view_overflow;
-static unsigned long domain_passes;
+static unsigned long domain_passes,queue_enobufs,checkpoint_ok,checkpoint_failed;
+static pid_t checkpoint_pid;
+static double checkpoint_ms,max_checkpoint_ms;
 
 static void on_signal(int sig) {
     (void)sig;
@@ -615,6 +620,7 @@ static void write_status(wa_engine *e, const wa_config *c) {
     fprintf(f,"socket_instance=%s evidence_age_ms=%lld/%lld publisher_reason=%s/%s publisher_excluded=%u/%u\n",instance,evidence_age_ms[0],evidence_age_ms[1],
         wh_reason_name(health_feed.client.state.wan[0].reason),wh_reason_name(health_feed.client.state.wan[1].reason),health_feed.client.state.wan[0].excluded,health_feed.client.state.wan[1].excluded);
     fprintf(f,"adapter loop_mono_ns=%llu queue_packets=%lu passes=%lu missing_ctid=%lu tcp=%lu udp=%lu lifecycle=unconfirmed+confirmed refresh_ok=%lu refresh_failed=%lu kernel_unconfirmed=%d refresh_pid=%ld refresh_ms=%.2f max_refresh_ms=%.2f max_timestamp_delay_us=%.0f\n",(unsigned long long)health_now,queue_packets,queue_passes,missing_ctid,tcp_admissions,udp_admissions,refresh_ok,refresh_failed,kernel_unconfirmed,(long)refresh_pid,last_refresh_ms,max_refresh_ms,max_timestamp_delay_us);
+    fprintf(f,"checkpoint pid=%ld saved=%lu failed=%lu last_ms=%.2f max_ms=%.2f interval_seconds=5 queue_enobufs=%lu\n",(long)checkpoint_pid,checkpoint_ok,checkpoint_failed,checkpoint_ms,max_checkpoint_ms,queue_enobufs);
     fprintf(f,"capacity domain=%s local_prefixes=%d/%d policy_selectors=%d/%d domain_passes=%lu view_rows=%d/%d view_overflow=%d\n",
         wa_domain_status_name(domain_status),e->domain.n_local,WA_MAX_LOCAL,e->domain.n_pins,WA_MAX_PINS,domain_passes,view_rows,WA_MAX_STATES,view_overflow);
     fclose(f);
@@ -632,6 +638,22 @@ static uint64_t checkpoint_profile(const wa_engine *e,const wa_config *c) {
     uint64_t h=UINT64_C(1469598103934665603);
     for(const unsigned char *p=(const unsigned char *)text;*p;p++){h^=*p;h*=UINT64_C(1099511628211);}
     return h;
+}
+
+typedef struct {
+    const wa_engine *engine;
+    const char *path;
+    const uint8_t *boot;
+    uint64_t profile;
+    int health_fd,collector_fd;
+} wa_checkpoint_context;
+static int save_checkpoint(void *argument,void *result,size_t capacity) {
+    wa_checkpoint_context *c=argument;
+    if(capacity!=sizeof(int))return -1;
+    if(c->health_fd>=0)close(c->health_fd);
+    if(c->collector_fd>=0)close(c->collector_fd);
+    *(int *)result=wa_checkpoint_save(c->path,c->engine,c->boot,c->profile,wh_now());
+    return 0;
 }
 
 static void run(wa_engine *e, wa_config *c) {
@@ -653,22 +675,25 @@ static void run(wa_engine *e, wa_config *c) {
     char mapping_cache[200];uint8_t mapping_boot[16];
     snprintf(mapping_cache,sizeof mapping_cache,"%s/mappings.cache",c->status_dir);
     int checkpoint_enabled=!wh_boot(mapping_boot);
-    uint64_t profile=checkpoint_profile(e,c),saved_binding=e->next_binding_id,saved_epoch=e->epoch;
+    uint64_t profile=checkpoint_profile(e,c);
     if(checkpoint_enabled) {
         int restored=wa_checkpoint_load(mapping_cache,e,mapping_boot,profile,wh_now());
         fprintf(stderr,"source mapping checkpoint: %s\n",restored>0?"restored":restored<0?"rejected":"fresh start");
         wa_checkpoint_save(mapping_cache,e,mapping_boot,profile,wh_now());
     }
+    uint64_t saved_binding=e->next_binding_id,saved_epoch=e->epoch;
+    wa_save_schedule saves={0};saves.next=mono()+5;
+    wa_worker writer;wa_worker_init(&writer);int saved_result=-1;
     int queue_fd=bind_queue(c);
     double next_reconcile=mono()+c->reconcile_interval,next_status=mono()+1;
     write_status(e,c);
-    fprintf(stderr,"wan-affinity %s queue=%d mode=%s lifecycle=U-then-C async-refresh\n",WA_VERSION,c->queue_num,e->mode==WA_AFFINITY?"affinity":"sticky");
+    fprintf(stderr,"wan-affinity %s queue=%d mode=%s lifecycle=U-then-C async-refresh async-checkpoint\n",WA_VERSION,c->queue_num,e->mode==WA_AFFINITY?"affinity":"sticky");
 #ifdef WA_TESTING
     int held=0,held_once=0;uint32_t held_id=0,held_mark=0;double held_until=0;
 #endif
     while(!stopping) {
-        struct pollfd p[3]={{queue_fd,POLLIN,0},{job.fd,POLLIN,0},{health_feed.client.fd,POLLIN,0}};
-        int rc=poll(p,3,20);
+        struct pollfd p[4]={{queue_fd,POLLIN,0},{job.fd,POLLIN,0},{health_feed.client.fd,POLLIN,0},{writer.fd,POLLIN,0}};
+        int rc=poll(p,4,20);
         if(rc<0){if(errno==EINTR)continue;die("poll");}
         double t=mono();
         wa_health_feed_step(&health_feed,e,wh_now());
@@ -682,6 +707,7 @@ static void run(wa_engine *e, wa_config *c) {
         if (p[0].revents & POLLIN) {
             char buf[65536];
             ssize_t got = recv(queue_fd, buf, sizeof buf, 0);
+            if(got<0 && errno==ENOBUFS)queue_enobufs++;
             if (got > 0) {
                 size_t offset=0;struct nlmsghdr *h;
                 while ((h=(void*)wa_nl_frame(buf,(size_t)got,&offset))) {
@@ -804,7 +830,7 @@ static void run(wa_engine *e, wa_config *c) {
                     last_refresh_ms=(observation.completed-observation.facts_started)*1000;
                     if(last_refresh_ms>max_refresh_ms)max_refresh_ms=last_refresh_ms;
                     wa_tick(e,mono());
-                    if(checkpoint_enabled)wa_checkpoint_save(mapping_cache,e,mapping_boot,profile,wh_now());
+                    if(checkpoint_enabled)wa_save_dirty(&saves);
                 }
                 write_status(e,c);
             }
@@ -818,12 +844,33 @@ static void run(wa_engine *e, wa_config *c) {
             refresh_pid=job.pid;
         }
         if(checkpoint_enabled && (saved_binding!=e->next_binding_id || saved_epoch!=e->epoch)) {
-            if(!wa_checkpoint_save(mapping_cache,e,mapping_boot,profile,wh_now())) {
-                saved_binding=e->next_binding_id;saved_epoch=e->epoch;
+            wa_save_dirty(&saves);saved_binding=e->next_binding_id;saved_epoch=e->epoch;
+        }
+        if(writer.pid) {
+            double started=writer.started;
+            int ready=wa_worker_poll(&writer,&saved_result,mono(),2.0);
+            checkpoint_pid=writer.pid;
+            if(ready) {
+                checkpoint_ms=(mono()-started)*1000;
+                if(checkpoint_ms>max_checkpoint_ms)max_checkpoint_ms=checkpoint_ms;
+                int ok=ready>0 && !saved_result;
+                if(ok)checkpoint_ok++;else checkpoint_failed++;
+                wa_save_end(&saves,ok);
             }
+        }
+        if(checkpoint_enabled && !e->uncertain && wa_save_due(&saves,t)) {
+            wa_checkpoint_context cache={e,mapping_cache,mapping_boot,profile,
+                                         health_feed.client.fd,job.fd};
+            wa_save_begin(&saves,t);
+            if(wa_worker_start(&writer,&saved_result,sizeof saved_result,save_checkpoint,&cache,queue_fd,mono())) {
+                checkpoint_failed++;wa_save_end(&saves,0);
+            }
+            checkpoint_pid=writer.pid;
         }
         if(t>=next_status){wa_tick(e,t);write_status(e,c);next_status=t+1;}
     }
+    close(queue_fd);
+    wa_worker_cancel(&writer);
     wa_worker_cancel(&job);
     /* Never wait in the admission path. Shutdown gives a killed child a small,
      * bounded reap window; queue closure cannot be delayed by a stuck command. */
@@ -831,12 +878,19 @@ static void run(wa_engine *e, wa_config *c) {
         wa_worker_poll(&job,&observation,mono(),0);
         struct timespec brief={0,10000000L};nanosleep(&brief,NULL);
     }
-    close(queue_fd);write_status(e,c);
-    if(checkpoint_enabled)wa_checkpoint_save(mapping_cache,e,mapping_boot,profile,wh_now());
+    for(int n=0;writer.pid && n<25;n++) {
+        wa_worker_poll(&writer,&saved_result,mono(),0);
+        struct timespec brief={0,10000000L};nanosleep(&brief,NULL);
+    }
+    checkpoint_pid=writer.pid;write_status(e,c);
+    /* Do not race a still-unreaped writer against the final rename. */
+    if(checkpoint_enabled && !writer.pid)wa_checkpoint_save(mapping_cache,e,mapping_boot,profile,wh_now());
     wh_client_close(&health_feed.client,wh_now());
 }
 
 int main(int argc, char **argv) {
+    if(argc==5 && !strcmp(argv[1],"--supervise"))
+        return wa_supervise(argv[2],argv[3],argv[4]);
     signal(SIGTERM, on_signal);
     signal(SIGINT, on_signal);
     signal(SIGPIPE, SIG_IGN);
