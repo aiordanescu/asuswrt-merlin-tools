@@ -31,7 +31,7 @@ lifecycle, lease-change and slow-worker safeguards.
 ## Download and qualification
 
 Download **`wan-watchdog-aarch64.tar.gz`** and **`SHA256SUMS`** from the
-[prebuilt beta release](https://github.com/aiordanescu/asuswrt-merlin-tools/releases/tag/wan-tools-2026.10.16-beta.1)
+[prebuilt beta release](https://github.com/aiordanescu/asuswrt-merlin-tools/releases/tag/wan-tools-2026.10.16-beta.2)
 to your computer. No compiler, Python or Entware is needed on the router.
 Target: **aarch64 Linux**, tested on RT-AX88U / Merlin 3004.388.12_2.
 Compare the archive's SHA-256 with its entry in `SHA256SUMS`, for example on
@@ -187,3 +187,13 @@ component directory. Transfer it and follow the same qualification and
 installation steps above. `make router` also builds the separate Linux-only
 `test_socket` and `test_probe` diagnostics described earlier; these are not
 included in the install bundle.
+
+## Updating the separate DDNS helper
+
+The bundle includes `wan-watchdog-ddns.sh`. `install.sh` updates the C service;
+the DDNS helper remains a separately installed script. For the October 16
+beta.2 fixes, back up your existing helper and atomically replace it with this
+file, following the [bundle instructions](BUNDLE-README.md). Keep custom paths
+and preserve the postconf hook and any provider-specific additions. The helper
+adds a live-owner/progress check and detaches background workers without adding
+jobs to the shell monitor's job table. It does not change UI DDNS settings.

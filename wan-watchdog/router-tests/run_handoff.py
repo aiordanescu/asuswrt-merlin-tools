@@ -44,9 +44,10 @@ fi
         raise AssertionError(s)
     try:
         ssh(f'{env} FAILOVER_MODE=pinned FAILOVER_PRIORITY=78 sh {entry} start',timeout=15)
-        result['baseline']=ready(40);print('Private previous service qualified.',flush=True)
+        result['baseline']=ready(40);result['baseline_policy']=ssh('cat '+run+'/policy');print('Private previous service qualified.',flush=True)
         result['install_output']=ssh(f'{env} sh {root}/candidate/install.sh --upgrade',timeout=100)
-        assert ssh('cat '+run+'/policy').strip()=='pinned 78'
+        result['captured_policy']=ssh('cat '+owner+'/service.conf');result['current_policy']=ssh('cat '+run+'/policy')
+        assert result['current_policy'].strip()=='pinned 78',result
         assert ssh('md5sum '+base+'/wan-watchdog').split()[0]==hashlib.md5((Path(__file__).resolve().parents[1]/'build/wan-watchdog').read_bytes()).hexdigest()
         result['upgraded']=health();result['captured_policy']=ssh('cat '+owner+'/service.conf');print('Actual router upgrade preserved pinned mode and priority 78.',flush=True)
         result['rollback_output']=ssh(f'{env} sh {base}/rollback.sh --rollback',timeout=90)

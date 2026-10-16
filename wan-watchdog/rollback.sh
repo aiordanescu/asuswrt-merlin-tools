@@ -11,7 +11,7 @@ esac
 case "$token" in ''|*[!0-9-]*) ww_die 'invalid rollback transaction';; esac
 transaction="$BASE/rollback/$token"
 [ -r "$transaction/entry" ] && [ -r "$transaction/kind" ] || ww_die 'rollback snapshot missing'
-mkdir -p "$RUN"
+ww_runtime_private
 exec 8>"$RUN/rollback.lock"
 flock -n 8 || ww_die 'another rollback is running'
 if [ "${1:-}" = --guard ]; then

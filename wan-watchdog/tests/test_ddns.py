@@ -29,6 +29,12 @@ ddns_routes() { return 0; }
 DDNS_CUSTOM_CONFIG_DIR="$STATE_DIR/custom"
 mkdir -p "$DDNS_CUSTOM_CONFIG_DIR"
 echo 100 > "$STATE_DIR/ddns-verify-last"
+# Private owner lease: no real process or production routing lock is used.
+ddns_clock() { echo "$NOW"; }
+flock() { return 1; }
+touch "$STATE_DIR/lock"
+echo active > "$STATE_DIR/ddns-status"
+echo "$NOW" > "$STATE_DIR/ddns-status-at"
 ddns_request() { echo "$1" >> "$STATE_DIR/requests"; ddns_atomic "$STATE_DIR/ddns-requested" "$1"; }
 nvset ddns_enable_x 1; nvset wans_mode lb; nvset ddns_wan_unit -1
 nvset ddns_server_x WWW.NO-IP.COM; nvset ddns_server_x_old WWW.NO-IP.COM; nvset ddns_ipv6_update 0; nvset ipv6_service disabled
@@ -347,10 +353,32 @@ echo "$*" >> "$STATE_DIR/worker-calls"
 EOF
 chmod 755 "$DDNS_HELPER"
 flock() { return 0; }
-ddns_request '1:46.1.1.1'; wait
-NOW=110; ddns_request '1:46.1.1.1'; wait
-NOW=160; ddns_request '1:46.1.1.1'; wait
+ddns_request '1:46.1.1.1'
+i=0;while [ ! -f "$STATE_DIR/worker-calls" ] && [ "$i" -lt 3 ];do sleep 1;i=$((i+1));done
+NOW=110; ddns_request '1:46.1.1.1'
+NOW=160; ddns_request '1:46.1.1.1'
+i=0;while [ "$(wc -l < "$STATE_DIR/worker-calls" | tr -d ' ')" -lt 2 ] && [ "$i" -lt 3 ];do sleep 1;i=$((i+1));done
+assert_eq "$(jobs -p)" ''
 assert_eq "$(wc -l < "$STATE_DIR/worker-calls" | tr -d ' ')" 2
+''')
+
+    def test_stale_selection_requires_live_lock_and_recent_progress(self):
+        self.run_case('''
+echo 1 > "$OWNERSHIP_DIR/ddns-auto-unit"
+printf 'provider a {\\n}\\niface = eth0\\n' > "$STATE_DIR/config"
+cp "$STATE_DIR/config" "$STATE_DIR/before"
+assert_eq "$(ddns_address)" 46.1.1.1
+NOW=131
+if ddns_address;then exit 1;fi
+ddns_postconf "$STATE_DIR/config";cmp "$STATE_DIR/config" "$STATE_DIR/before" || exit 1
+NOW=100;flock() { return 0; }
+if ddns_address;then exit 1;fi
+ddns_postconf "$STATE_DIR/config";cmp "$STATE_DIR/config" "$STATE_DIR/before" || exit 1
+flock() { return 1; };NOW=99
+if ddns_address;then exit 1;fi
+NOW=105;ddns_tick
+assert_eq "$(cat "$STATE_DIR/ddns-status-at")" 105
+assert_eq "$(ddns_address)" 46.1.1.1
 ''')
 
     def test_main_status_includes_ddns_without_command_builtin(self):

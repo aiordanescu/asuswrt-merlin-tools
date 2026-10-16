@@ -108,7 +108,7 @@ flushed on failover, recovery, stop, upgrade, or uninstall.
 No Entware dependency or router firmware rebuild is required for the tested
 static aarch64 binary. Download **`wan-affinity-aarch64.tar.gz`** and
 **`SHA256SUMS`** from the
-[prebuilt beta release](https://github.com/aiordanescu/asuswrt-merlin-tools/releases/tag/wan-tools-2026.10.16-beta.1)
+[prebuilt beta release](https://github.com/aiordanescu/asuswrt-merlin-tools/releases/tag/wan-tools-2026.10.16-beta.2)
 to your computer. This build targets **aarch64 Linux** and was tested on the
 RT-AX88U / Merlin 3004.388.12_2. Compare the archive's checksum with its entry
 in `SHA256SUMS` (on macOS):
@@ -118,7 +118,7 @@ shasum -a 256 wan-affinity-aarch64.tar.gz
 ```
 
 On Linux use `sha256sum`. See
-[release and verification details](https://github.com/aiordanescu/asuswrt-merlin-tools/blob/wan-tools-2026.10.16-beta.1/RELEASES.md).
+[release and verification details](https://github.com/aiordanescu/asuswrt-merlin-tools/blob/wan-tools-2026.10.16-beta.2/RELEASES.md).
 Using an SSH alias named `router`, transfer the verified archive:
 
 ```sh
@@ -161,7 +161,6 @@ RECONCILE_INTERVAL=2
 AFFINITY_SEED=
 HEALTH_SOURCE=watchdog
 HEALTH_SOCKET=/tmp/wan-watchdog/health.sock
-STATUS_DIR=/tmp/wan-affinity
 ```
 
 For one-client qualification, use `LAN_SCOPE=0` and `CLIENT=<LAN IPv4>`.
@@ -191,6 +190,15 @@ make -C wan-affinity bundle ROUTER_CC='zig cc -target aarch64-linux-musl'
 This creates `wan-affinity/build/wan-affinity-aarch64.tar.gz`. Transfer it and
 follow the same installation/configuration steps above. See
 [BUILDING.md](BUILDING.md) for the toolchain and diagnostic build details.
+
+The [Low-finding review report](../REVIEW-LOW-2026-10-16.md) describes the 0.4.6
+configuration, lifecycle and diagnostic fixes.
+
+Configuration uses literal `KEY=value` assignments. Single/double quotes,
+leading whitespace, `export KEY=value`, and trailing comments are accepted.
+Variable expansion, commands, escapes, and multiline values are rejected before
+startup. The controller owns `/tmp/wan-affinity`; `STATUS_DIR` is supported only
+when invoking the helper directly. A conflicting controller value is refused.
 
 ## Operations and rollback
 

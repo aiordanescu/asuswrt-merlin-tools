@@ -6,14 +6,24 @@ SOURCE=$(CDPATH= cd -- "$(dirname -- "$0")" && pwd)
 case "${1:-}" in --install|--upgrade) action=$1;; *) ww_die 'usage: install.sh --install|--upgrade';; esac
 awk '$1=="Uid:" && $3==0 {ok=1} END {exit !ok}' "$PROC/self/status" || ww_die 'root required'
 umask 077
-mkdir -p "$RUN" "$OWNER"
+ww_runtime_private
+mkdir -p "$OWNER"
 exec 7>"$RUN/install.lock"
 flock -n 7 || ww_die 'another installer is running'
 ww_no_foreign_owner
 ww_owner || ww_die 'running watchdog owner required'
 oldpid=$p;oldkind=$kind
 if [ "$action" = --install ]; then
-    [ ! -e "$BASE" ] && [ "$oldkind" = shell ] || ww_die 'use --upgrade for an installed monitor'
+    [ "$oldkind" = shell ] || ww_die 'use --upgrade for an installed monitor'
+    # A completed rollback deliberately retains its recovery tree. Reuse it
+    # for another first-install attempt, but never race an armed guard.
+    if [ -e "$BASE" ]; then
+        [ -r "$BASE/rollback/latest" ] || ww_die 'unrecognized existing service directory'
+        read previous <"$BASE/rollback/latest"
+        case "$previous" in ''|*[!0-9-]*) ww_die 'invalid previous transaction';; esac
+        [ -f "$BASE/rollback/$previous/restored" ] &&
+          [ ! -f "$BASE/rollback/$previous/armed" ] || ww_die 'previous recovery has not completed'
+    fi
 else
     [ -d "$BASE" ] && [ "$oldkind" = monitor ] || ww_die 'monitor owner required for upgrade'
 fi
@@ -32,12 +42,17 @@ else
       [ "$(grep -o '"eligible":1' "$RUN/install-before.json" | wc -l)" -eq 2 ] &&
       grep -q 'desired=-1 applied=-1' "$RUN/status" || ww_die 'wait for both WANs eligible with no override'
 fi
+# Serialize before creating a service tree: a failed capture leaves no partial
+# installation and no changes to the running owner.
+capture="$RUN/install-policy.$$"
+trap 'rm -f "$capture"' EXIT
+ww_capture_policy "$oldpid" "$capture" "$oldkind"
 token="$(ww_now)-$$"
 transaction="$BASE/rollback/$token"
 mkdir -p "$BASE/lib" "$transaction/lib"
 printf '%s\n' "$oldkind" >"$transaction/kind"
 cp -p "$ENTRY" "$transaction/entry"
-ww_capture_policy "$oldpid" "$transaction/service.conf" "$oldkind"
+mv "$capture" "$transaction/service.conf"
 if [ "$oldkind" = monitor ]; then
     for file in wan-watchdog wan-healthctl wan-watchdog-legacy.sh lib/ww-adapter.sh; do cp -p "$BASE/$file" "$transaction/$file"; done
 fi

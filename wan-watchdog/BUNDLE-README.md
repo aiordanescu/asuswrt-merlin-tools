@@ -5,7 +5,7 @@ This archive contains static binaries; no compiler or Python is needed on the
 router. Source and licensing: https://github.com/aiordanescu/asuswrt-merlin-tools
 
 Prebuilt downloads and checksums:
-https://github.com/aiordanescu/asuswrt-merlin-tools/releases/tag/wan-tools-2026.10.16-beta.1
+https://github.com/aiordanescu/asuswrt-merlin-tools/releases/tag/wan-tools-2026.10.16-beta.2
 Verify the downloaded archive against `SHA256SUMS` on your computer before
 transferring it. Building from source remains optional; the complete guide
 below retains those instructions.
@@ -48,3 +48,20 @@ https://github.com/aiordanescu/asuswrt-merlin-tools/blob/main/common/wan-health/
 
 The MIT license is included as `LICENSE`; static-runtime notices are in
 `LICENSES/`.
+
+The DDNS helper is shipped as `wan-watchdog-ddns.sh`. The C-service installer
+does not replace the separately installed helper or edit postconf hooks. For
+this release, update an existing standard helper after saving a backup:
+
+```sh
+cp -p /jffs/scripts/wan-watchdog-ddns /jffs/scripts/wan-watchdog-ddns.previous
+cp wan-watchdog-ddns.sh /jffs/scripts/wan-watchdog-ddns.new
+chmod 700 /jffs/scripts/wan-watchdog-ddns.new
+sh -n /jffs/scripts/wan-watchdog-ddns.new && \
+  mv /jffs/scripts/wan-watchdog-ddns.new /jffs/scripts/wan-watchdog-ddns
+```
+
+For a custom `DDNS_HELPER` path, use that path instead. Preserve custom edits and
+the existing postconf hook. The new helper refuses stale Auto overrides after
+the watchdog stops. The lifecycle tools require firmware `hexdump` and `awk`
+for NUL-safe configuration capture; these are present on the qualified router.

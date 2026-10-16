@@ -3,6 +3,7 @@
 #include "ww_core.h"
 #include "ww_probe.h"
 #include "ww_worker.h"
+#include "ww_runtime.h"
 #include <arpa/inet.h>
 #include <errno.h>
 #include <fcntl.h>
@@ -24,15 +25,7 @@
 #include <unistd.h>
 
 #define WORKER_SECONDS 5.0
-/* Two serialized, valid workers can span ten seconds. Allow the final probe
- * deadline too; age remains measured conservatively from collection start. */
-#define FACT_MAX_AGE (11 * WH_NSEC)
-
-typedef struct {
-    int enable, active, route[2];
-    uint32_t ip, gateway, target[2];
-    char ifname[16];
-} fact;
+typedef ww_fact fact;
 typedef struct {
     unsigned magic;
     fact wan[2];
@@ -41,10 +34,9 @@ typedef struct {
 } view;
 typedef struct {
     char adapter[256], runtime[160];
-    int operation, wanted, restore, pinned, p[2], a[2], mask[2];
-    ww_flags flags[2];
-    uint64_t sampled, generation;
-    fact expected[2];
+    int operation, pinned, p[2], a[2];
+    uint64_t generation;
+    ww_decision decision;
     int close_fds[32], nclose;
 } context;
 static volatile sig_atomic_t stopping;
@@ -111,8 +103,8 @@ static int invoke(context *c, const char *phase, view *v) {
             _exit(125);
         close(pipefd[1]);
         char arg[8][16];
-        int values[8] = {c->wanted, c->restore, c->p[0],    c->p[1],
-                         c->a[0],   c->a[1],    c->mask[0], c->mask[1]};
+        int values[8] = {c->decision.wanted, c->decision.restore, c->p[0],    c->p[1],
+                         c->a[0],   c->a[1],    c->decision.mask[0], c->decision.mask[1]};
         for (int i = 0; i < 8; i++)
             snprintf(arg[i], sizeof arg[i], "%d", values[i]);
         execl("/bin/sh", "sh", c->adapter, phase, arg[0], arg[1], arg[2], arg[3], arg[4], arg[5],
@@ -190,10 +182,10 @@ static int collect(void *arg, void *result, size_t capacity) {
     v->started = wh_now();
     v->generation = c->generation;
     v->operation = c->operation;
-    v->wanted = c->wanted;
-    v->restore = c->restore;
+    v->wanted = c->decision.wanted;
+    v->restore = c->decision.restore;
     v->acted = c->operation == 2 &&
-               (c->pinned || c->restore || (c->wanted >= 0 && c->flags[1 - c->wanted].acceptable));
+               (c->pinned || c->decision.restore || (c->decision.wanted >= 0 && c->decision.flags[1 - c->decision.wanted].acceptable));
     if (c->operation == 2) {
         for (int u = 0; u < 2; u++) {
             char p[256];
@@ -201,7 +193,7 @@ static int collect(void *arg, void *result, size_t capacity) {
             FILE *f = fopen(p, "w");
             if (!f)
                 return -1;
-            ww_flags *h = &c->flags[u];
+            ww_flags *h = &c->decision.flags[u];
             fprintf(f, "%d %d %d %s %d %d %d %d\n", h->bad, h->acceptable, h->recovered,
                     wh_reason_name((unsigned)h->reason), h->loss[0], h->loss[1], h->samples[0],
                     h->samples[1]);
@@ -209,10 +201,10 @@ static int collect(void *arg, void *result, size_t capacity) {
                 return -1;
         }
         char seconds[32];
-        snprintf(seconds, sizeof seconds, "%llu", (unsigned long long)(c->sampled / WH_NSEC));
+        snprintf(seconds, sizeof seconds, "%llu", (unsigned long long)(c->decision.sampled / WH_NSEC));
         setenv("WW_SAMPLE_SECONDS", seconds, 1);
         for (int u = 0; u < 2; u++) {
-            fact *f = &c->expected[u];
+            fact *f = &c->decision.expected[u];
             char ip[INET_ADDRSTRLEN], gw[INET_ADDRSTRLEN], name[32], value[160];
             if (!inet_ntop(AF_INET, &f->ip, ip, sizeof ip) ||
                 !inet_ntop(AF_INET, &f->gateway, gw, sizeof gw))
@@ -223,7 +215,7 @@ static int collect(void *arg, void *result, size_t capacity) {
         }
         for (int t = 0; t < 2; t++) {
             char name[32], value[INET_ADDRSTRLEN];
-            if (!inet_ntop(AF_INET, &c->expected[0].target[t], value, sizeof value))
+            if (!inet_ntop(AF_INET, &c->decision.expected[0].target[t], value, sizeof value))
                 return -1;
             snprintf(name, sizeof name, "WW_TARGET%d", t);
             setenv(name, value, 1);
@@ -267,13 +259,13 @@ static void status_file(const char *runtime, const wh_state *s, const wh_server 
         "monitor=1 shadow=%d uptime_seconds=%llu mode=%s seq=%llu progress=%llu publisher_ready=%d "
         "subscribers=%u refresh_ok=%u refresh_failed=%u max_dispatch_delay_us=%llu "
         "routing_error=%u desired=%d applied=%d desired_generation=%llu applied_generation=%llu "
-        "fact_age_ms=%llu stale_fact_cycles=%u\n",
+        "fact_age_ms=%lld stale_fact_cycles=%u\n",
         shadow, (unsigned long long)(wh_now() / WH_NSEC), s->pinned ? "pinned" : "whole_lan",
         (unsigned long long)s->seq, (unsigned long long)s->progress, server->listener >= 0, peers,
         ok, failed, (unsigned long long)(jitter / 1000), s->routing_error, s->desired_failed,
         s->applied_failed, (unsigned long long)s->desired_generation,
         (unsigned long long)s->applied_generation,
-        (unsigned long long)(facts_at ? (wh_now() - facts_at) / 1000000 : 0), stale_cycles);
+        ww_fact_age_ms(facts_at, wh_now()), stale_cycles);
     for (int u = 0; u < 2; u++) {
         const wh_wan *w = &s->wan[u];
         fprintf(f,
@@ -387,7 +379,8 @@ int main(int argc, char **argv) {
         }
     }
     if (!adapter || !legacy || !safe_path(adapter) || !safe_path(legacy) || !safe_path(runtime) ||
-        !safe_path(ownership))
+        !safe_path(ownership) ||
+        strlen(runtime) + sizeof("/health.sock") > sizeof(((struct sockaddr_un *)0)->sun_path))
         return 2;
     (void)env_number("FAILOVER_PRIORITY", 88, 3, 99);
     unsigned tables[3] = {env_number("FAILOVER_TABLE", 20188, 1000, 2147483647),
@@ -407,6 +400,8 @@ int main(int argc, char **argv) {
         fatal("runtime");
     if (lstat(runtime, &st) || !S_ISDIR(st.st_mode) || st.st_uid != geteuid())
         fatal("runtime ownership");
+    if (chmod(runtime, 0700))
+        fatal("runtime permissions");
     char path[256];
     snprintf(path, sizeof path, "%s/lock", runtime);
     int lock = open(path, O_RDWR | O_CREAT | O_CLOEXEC, 0600);
@@ -447,6 +442,7 @@ int main(int argc, char **argv) {
     if (wh_server_open(&server, socketpath))
         perror("health socket unavailable; monitoring continues");
     uint64_t next_listener_retry = started + 5 * WH_NSEC;
+    unsigned listener_retry_seconds = 5;
     int timer = timerfd_create(CLOCK_MONOTONIC, TFD_NONBLOCK | TFD_CLOEXEC);
     if (timer < 0)
         fatal("timerfd");
@@ -501,11 +497,19 @@ int main(int argc, char **argv) {
         previous_mono = now;
         previous_boot = boot;
         if (server.listener < 0 && now >= next_listener_retry) {
-            if (wh_server_open(&server, socketpath))
-                perror("health socket retry");
-            else
+            if (wh_server_open(&server, socketpath)) {
+                /* One initial error is sufficient; a persistent obstruction
+                 * must not grow monitor.log forever. Continue bounded retries. */
+                if (listener_retry_seconds < 300)
+                    listener_retry_seconds *= 2;
+                if (listener_retry_seconds > 300)
+                    listener_retry_seconds = 300;
+            } else {
                 publish(&server, &state, &core, now);
-            next_listener_retry = now + 5 * WH_NSEC;
+                monitor_log(LOG_INFO, "health publisher recovered");
+                listener_retry_seconds = 5;
+            }
+            next_listener_retry = now + listener_retry_seconds * WH_NSEC;
         }
         if (job.pid) {
             int rc = ww_worker_poll(&job, &observation, (double)now / 1e9, WORKER_SECONDS);
@@ -519,8 +523,6 @@ int main(int argc, char **argv) {
                     unsigned previous_error = state.routing_error;
                     refresh_ok++;
                     last_facts = observation.started;
-                    if (observation.operation)
-                        routing_failure = (unsigned)observation.action_error;
                     if (!initialized && active && observation.action_error) {
                         fprintf(stderr, "initial routing setup failed; preserving ledger\n");
                         break;
@@ -528,38 +530,20 @@ int main(int argc, char **argv) {
                     int first = !initialized;
                     initialized = 1;
                     failed_intent = observation.failed;
-                    /* The persistent ledger records intent before mutation;
-                     * it is not proof that a requested overlay was applied. */
-                    if (observation.operation == 1 && observation.failed >= 0)
-                        routing_unconfirmed = 1;
-                    if (observation.acted && !observation.action_error) {
-                        routing_unconfirmed = 0;
-                        int changed =
-                            observation.generation != state.applied_generation ||
-                            (!pinned && state.applied_failed !=
-                                            (observation.restore ? -1 : observation.wanted));
-                        if (!pinned)
-                            state.applied_failed = observation.restore ? -1 : observation.wanted;
-                        if (observation.generation >= state.applied_generation)
-                            state.applied_generation = observation.generation;
-                        if (changed)
-                            monitor_log(LOG_INFO,
-                                        "routing applied; generation=%llu failed=%d mode=%s",
-                                        (unsigned long long)state.applied_generation,
-                                        state.applied_failed, pinned ? "pinned" : "whole_lan");
-                    }
+                    if (ww_routing_observed(&state, active, pinned, observation.operation,
+                            observation.failed, observation.acted, observation.action_error,
+                            observation.restore, observation.wanted, observation.generation,
+                            &routing_failure, &routing_unconfirmed))
+                        monitor_log(LOG_INFO, "routing applied; generation=%llu failed=%d mode=%s",
+                            (unsigned long long)state.applied_generation,
+                            state.applied_failed, pinned ? "pinned" : "whole_lan");
                     for (int u = 0; u < 2; u++) {
                         fact *f = &observation.wan[u];
-                        int changed = f->enable != facts[u].enable || f->ip != facts[u].ip ||
-                                      f->gateway != facts[u].gateway ||
-                                      memcmp(f->ifname, facts[u].ifname, 16) ||
-                                      memcmp(f->target, facts[u].target, 8);
+                        int changed = ww_fact_changed(f, &facts[u]);
                         if (changed) {
                             /* Pending intent belongs to the configuration that
                              * produced it, never to this replacement lease. */
-                            need_apply = 0;
-                            ctx.restore = 0;
-                            memset(ctx.mask, 0, sizeof ctx.mask);
+                            ww_decision_invalidate(&ctx.decision, &need_apply);
                             if (active && state.applied_failed >= 0)
                                 routing_unconfirmed = 1;
                             monitor_log(
@@ -595,7 +579,7 @@ int main(int argc, char **argv) {
             }
         }
         if (have_cycle && now >= deadline) {
-            int stale = !last_facts || now - last_facts > FACT_MAX_AGE;
+            int stale = !ww_facts_fresh(last_facts, now);
             if (stale)
                 stale_fact_cycles++;
             if (stale != was_stale)
@@ -640,14 +624,10 @@ int main(int argc, char **argv) {
             int intent_changed = !pinned && wanted != state.desired_failed;
             if (!pinned)
                 state.desired_failed = wanted;
-            ctx.wanted = wanted;
-            ctx.restore = restore;
-            ctx.sampled = dispatch;
-            memcpy(ctx.expected, facts, sizeof facts);
-            memcpy(ctx.flags, flags, sizeof flags);
+            ww_decision_capture(&ctx.decision, wanted, restore, dispatch, facts, flags);
             for (int u = 0; u < 2; u++) {
-                ctx.mask[u] = ww_pin_intent(flags, u, facts[u].active, &ctx.p[u], &ctx.a[u]);
-                if (pinned && ctx.mask[u]) {
+                ctx.decision.mask[u] = ww_pin_intent(flags, u, facts[u].active, &ctx.p[u], &ctx.a[u]);
+                if (pinned && ctx.decision.mask[u]) {
                     if (last_pin[u] != ctx.p[u] || last_active[u] != ctx.a[u])
                         intent_changed = 1;
                     last_pin[u] = ctx.p[u];
@@ -679,7 +659,7 @@ int main(int argc, char **argv) {
                     ww_probe *p = &probes[u][t];
                     p->result = -1;
                     if (facts[u].enable != 1 || !facts[u].ip || facts[u].route[t] != 1 ||
-                        !last_facts || now - last_facts > FACT_MAX_AGE)
+                        !ww_facts_fresh(last_facts, now))
                         continue;
                     if (p->fd < 0 && ww_probe_open(p, facts[u].ip, facts[u].ifname))
                         continue;

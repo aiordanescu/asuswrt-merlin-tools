@@ -320,7 +320,7 @@ clients after one successful reply again.
 
 ## Validation and compatibility
 
-The 65 simulated tests cover loss/outage decisions in both directions, bad
+The shell simulation tests cover loss/outage decisions in both directions, bad
 backups, single-target failure, disabled WANs, recovery timing/reset, route
 validation, partial routing errors, rolling samples, warm-up, timing jitter,
 whole-LAN decisions, persistent ownership, collision refusal, exact cleanup,
@@ -333,29 +333,37 @@ provider-route ownership, and probe/cleanup coexistence:
 python3 -m unittest discover -s wan-watchdog/tests
 ```
 
-Run the same mock-based tests on a router shell against the installed **shell
-reference** (not the C monitor startup wrapper):
+The host command includes lifecycle tests that spawn private host processes.
+Run only the two shell mock suites through a router shell, against the installed
+**shell reference** (not the C monitor startup wrapper):
 
 ```sh
-WAN_WATCHDOG_TEST_ROUTER=router \
-WAN_WATCHDOG_TEST_SCRIPT=/jffs/scripts/wan-watchdog \
-WAN_WATCHDOG_TEST_DDNS_HELPER=/jffs/scripts/wan-watchdog-ddns \
-python3 -m unittest discover -s wan-watchdog/tests
+export WAN_WATCHDOG_TEST_ROUTER=router
+export WAN_WATCHDOG_TEST_SCRIPT=/jffs/wan-watchdog/service/wan-watchdog-legacy.sh
+export WAN_WATCHDOG_TEST_DDNS_HELPER=/jffs/scripts/wan-watchdog-ddns
+python3 -m unittest discover -s wan-watchdog/tests -p test_wan_watchdog.py
+python3 -m unittest discover -s wan-watchdog/tests -p test_ddns.py
 ```
 
-When the C monitor is installed, set `WAN_WATCHDOG_TEST_SCRIPT` to
-`/jffs/wan-watchdog/service/wan-watchdog-legacy.sh` instead. C and
+With the original shell installation, use `/jffs/scripts/wan-watchdog` for
+`WAN_WATCHDOG_TEST_SCRIPT` instead. C and
 socket tests/build commands are in the [watchdog guide](GUIDE.md); see
 [the qualification report](QUALIFICATION-2026-10-15.md) for the complete evidence.
 
 These shell tests use temporary directories and mock routing/probes; they do not
 change live WANs or client rules. Python 3.8+ runs the harness on the host;
 Python is not needed on the router. The shell monitor needs Merlin's `nvram`, `ip`, BusyBox `ping`, `awk`,
-`flock`, and `logger`. The C monitor sends ICMP directly; its routing worker
-still uses the firmware's shell utilities. DDNS also needs firmware Inadyn,
+`flock`, and `logger`. Lifecycle handoff uses firmware `hexdump` and `awk` to preserve NUL-delimited
+environment settings. The C monitor sends ICMP directly; its routing worker
+still uses the firmware's shell utilities. DDNS Auto redirection requires the watchdog routing lock and a progress heartbeat
+within 30 seconds; a persisted selection alone cannot override firmware after
+the watchdog stops. DDNS also needs firmware Inadyn,
 `service`, `sleep`, and `nslookup`; lookups are bounded without a `timeout` utility.
 
-The same 65 tests passed on the router's BusyBox shell. A real primary outage
+The initial 65-test suite passed on BusyBox during the October 15 qualification.
+Those results describe that revision. The [October 16 review report](../REVIEW-LOW-2026-10-16.md)
+records the current 88 host tests, 69 BusyBox shell tests and added C coverage.
+During the earlier qualification, a real primary outage
 redirected pinned clients to the backup; re-enablement, clean measurements,
 the exact 120-second recovery period and automatic restoration were observed
 live. Router syntax, source-bound probes, the duplicate-process lock and

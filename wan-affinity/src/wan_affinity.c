@@ -33,6 +33,7 @@
 #define _GNU_SOURCE
 #include "wa_engine.h"
 #include "wa_checkpoint.h"
+#include "wa_config_line.h"
 #include "wa_conntrack.h"
 #include "wa_nl_frame.h"
 #include "wa_worker.h"
@@ -65,7 +66,7 @@
 #include <time.h>
 #include <unistd.h>
 
-#define WA_VERSION "0.4.5"
+#define WA_VERSION "0.4.6"
 static wa_health_feed health_feed;
 
 static volatile sig_atomic_t stopping;
@@ -153,13 +154,6 @@ static void config_defaults(wa_config *c) {
     snprintf(c->config_path, sizeof c->config_path, "/jffs/wan-affinity/wan-affinity.conf");
 }
 
-static char *trim(char *s) {
-    while (*s == ' ' || *s == '\t') s++;
-    char *e = s + strlen(s);
-    while (e > s && (e[-1] == '\n' || e[-1] == ' ' || e[-1] == '\t')) *--e = 0;
-    return s;
-}
-
 static double config_number(const char *key, const char *value, int integer) {
     char *end;
     errno = 0;
@@ -176,14 +170,15 @@ static void config_load(wa_config *c, const char *path) {
     FILE *f = fopen(path, "r");
     if (!f) return;
     char line[256];
-    while (fgets(line, sizeof line, f)) {
-        char *s = trim(line);
-        if (*s == 0 || *s == '#') continue;
-        char *eq = strchr(s, '=');
-        if (!eq) continue;
-        *eq = 0;
-        char *k = trim(s);
-        char *v = trim(eq + 1);
+    unsigned lineno=0;
+    while(fgets(line,sizeof line,f)) {
+        lineno++;char *k,*v;
+        int long_line=!strchr(line,'\n') && strlen(line)==sizeof line-1;
+        int parsed=wa_config_line(line,&k,&v);
+        if(parsed<0 || long_line) {
+            fprintf(stderr,"invalid literal assignment in %s:%u\n",path,lineno);exit(2);
+        }
+        if(!parsed)continue;
         if (!strcmp(k, "MODE")) {
             if(strcmp(v,"sticky") && strcmp(v,"affinity")){fprintf(stderr,"invalid MODE\n");exit(2);}
             c->mode = !strcmp(v, "affinity") ? WA_AFFINITY : WA_STICKY;
@@ -215,6 +210,11 @@ static void config_load(wa_config *c, const char *path) {
 /* nvram / router facts                                               */
 /* ------------------------------------------------------------------ */
 
+static char *trim(char *s) {
+    while(isspace((unsigned char)*s))s++;
+    char *end=s+strlen(s);while(end>s && isspace((unsigned char)end[-1]))*--end=0;
+    return s;
+}
 static int nvram_get(const char *name, char *buf, size_t len) {
     char cmd[128];
     snprintf(cmd, sizeof cmd, "nvram get %s 2>/dev/null", name);
@@ -600,14 +600,16 @@ static int apply_observation(wa_engine *e,const wa_observation *o,double now) {
 /* ------------------------------------------------------------------ */
 
 static void write_status(wa_engine *e, const wa_config *c) {
-    char text[8192];
+    static char text[WA_MAX_ASSOC*256+2048];
     wa_engine_status(e, text, sizeof text);
     char path[200], tmp[220];
     snprintf(path, sizeof path, "%s/status", c->status_dir);
     snprintf(tmp, sizeof tmp, "%s/status.new", c->status_dir);
     FILE *f = fopen(tmp, "w");
     if (!f) return;
-    fputs(text, f);
+    char *entries=strchr(text,'\n');
+    if(entries){entries++;fwrite(text,1,(size_t)(entries-text),f);}
+    else fputs(text,f);
     char instance[33];long long evidence_age_ms[2];uint64_t health_now=wh_now();
     for(int i=0;i<16;i++)snprintf(instance+2*i,3,"%02x",health_feed.client.state.instance[i]);
     for(int u=0;u<2;u++) {
@@ -623,6 +625,7 @@ static void write_status(wa_engine *e, const wa_config *c) {
     fprintf(f,"checkpoint pid=%ld saved=%lu failed=%lu last_ms=%.2f max_ms=%.2f interval_seconds=5 queue_enobufs=%lu\n",(long)checkpoint_pid,checkpoint_ok,checkpoint_failed,checkpoint_ms,max_checkpoint_ms,queue_enobufs);
     fprintf(f,"capacity domain=%s local_prefixes=%d/%d policy_selectors=%d/%d domain_passes=%lu view_rows=%d/%d view_overflow=%d\n",
         wa_domain_status_name(domain_status),e->domain.n_local,WA_MAX_LOCAL,e->domain.n_pins,WA_MAX_PINS,domain_passes,view_rows,WA_MAX_STATES,view_overflow);
+    if(entries)fputs(entries,f);
     fclose(f);
     if (rename(tmp, path) != 0) remove(tmp);
 }

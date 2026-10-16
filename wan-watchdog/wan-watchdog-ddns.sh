@@ -82,10 +82,10 @@ ddns_routes() {
     ddns_resolve_last=$(ddns_read "$STATE_DIR/ddns-resolve-last" 0)
     if [ "$((NOW-ddns_resolve_last))" -ge 10 ]; then
       ddns_atomic "$STATE_DIR/ddns-resolve-last" "$NOW"
-      ( exec 9>&-; exec 8>"$STATE_DIR/ddns-resolve-lock"
+      ( ( exec 9>&-; exec 8>"$STATE_DIR/ddns-resolve-lock"
         flock -n 8 || exit 0
         "$DDNS_HELPER" --resolve-api "$ddns_host"
-      ) >/dev/null 2>&1 &
+      ) >/dev/null 2>&1 & )
     fi
   fi
   [ "$(ddns_read "$STATE_DIR/ddns-api-host" '')" = "$ddns_host" ] || return 1
@@ -148,6 +148,20 @@ ddns_report() {
   ddns_atomic "$STATE_DIR/ddns-status" "$1"
   ddns_log "$1"
 }
+ddns_live() {
+  # Persisted Auto selection is useful across restarts, but authorizes no
+  # redirection without a live routing owner and recent main-loop progress.
+  [ -s "$STATE_DIR/ddns-status" ] || return 1
+  ddns_at=$(ddns_read "$STATE_DIR/ddns-status-at" '')
+  case "$ddns_at" in ''|*[!0-9]*) return 1 ;; esac
+  ddns_age=$(($(ddns_clock)-ddns_at))
+  [ "$ddns_age" -ge 0 ] && [ "$ddns_age" -le 30 ] || return 1
+  [ -f "$STATE_DIR/lock" ] && ! flock -n "$STATE_DIR/lock" true
+}
+ddns_address() {
+  [ "$(nvram get ddns_wan_unit)" = -1 ] && ddns_supported && ddns_live || return 1
+  ddns_unit_ip "$(ddns_read "$OWNERSHIP_DIR/ddns-auto-unit" none)"
+}
 ddns_status() { printf 'DDNS %s\n' "$(ddns_read "$STATE_DIR/ddns-status" 'helper installed; awaiting measurements')"; }
 ddns_firmware_success() {
   [ "$(nvram get ddns_updated)" = 1 ] && [ "$(nvram get ddns_ipaddr)" = "$1" ] &&
@@ -157,6 +171,8 @@ ddns_firmware_success() {
 
 # Main watchdog calls this after classification; it never waits for an updater.
 ddns_tick() {
+  # Refresh even when the message is unchanged or update requests are throttled.
+  ddns_atomic "$STATE_DIR/ddns-status-at" "$NOW" || return 1
   if ! ddns_supported; then
     ddns_routes_clear
     if [ -f "$OWNERSHIP_DIR/ddns-auto-unit" ]; then
@@ -251,10 +267,10 @@ ddns_tick() {
       ddns_verify_last=$(ddns_read "$STATE_DIR/ddns-verify-last" 0)
       if [ "$((NOW-ddns_verify_last))" -ge 60 ]; then
         ddns_atomic "$STATE_DIR/ddns-verify-last" "$NOW"
-        ( exec 9>&-; exec 8>"$STATE_DIR/ddns-verify-lock"
+        ( ( exec 9>&-; exec 8>"$STATE_DIR/ddns-verify-lock"
           flock -n 8 || exit 0
           "$DDNS_HELPER" --verify "$ddns_verify_signature"
-        ) >/dev/null 2>&1 &
+        ) >/dev/null 2>&1 & )
       fi
     fi
   fi
@@ -266,14 +282,15 @@ ddns_request() {
   ddns_atomic "$STATE_DIR/ddns-requested" "$1"
   ddns_report "update requested ($1); waiting for provider success"
   # Subshell closes the daemon flock FD. Service/DNS work cannot delay probes.
-  ( exec 9>&-; exec 8>"$STATE_DIR/ddns-update-lock"
+  ( ( exec 9>&-; exec 8>"$STATE_DIR/ddns-update-lock"
     flock -n 8 || exit 0
     "$DDNS_HELPER" --update "$1"
-  ) >/dev/null 2>&1 &
+  ) >/dev/null 2>&1 & )
 }
 
 ddns_postconf() {
   [ "$(nvram get ddns_wan_unit)" = -1 ] && ddns_supported || return 0
+  ddns_live || return 0
   ddns_selected=$(ddns_read "$OWNERSHIP_DIR/ddns-auto-unit" none)
   ddns_selected_ip=$(ddns_unit_ip "$ddns_selected") || return 0
   ddns_iface=$(nvram get wan${ddns_selected}_ifname)
@@ -352,9 +369,7 @@ if [ "${WAN_WATCHDOG_DDNS_LIBRARY_ONLY:-0}" != 1 ]; then
   case "${1:-}" in
     --postconf) ddns_postconf "$2" ;;
     --resolve-api) ddns_resolve_api "$2" ;;
-    --address)
-      [ "$(nvram get ddns_wan_unit)" = -1 ] && ddns_supported || exit 1
-      ddns_unit_ip "$(ddns_read "$OWNERSHIP_DIR/ddns-auto-unit" none)" ;;
+    --address) ddns_address ;;
     --update) ddns_update "$2" ;;
     --verify) ddns_verify "$2" ;;
     *) exit 1 ;;

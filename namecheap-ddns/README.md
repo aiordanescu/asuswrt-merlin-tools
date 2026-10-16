@@ -222,3 +222,9 @@ That restores the original updater behavior, including the issues described abov
 - [Related 388.4 beta discussion, posts #174–175](https://www.snbforums.com/threads/asuswrt-merlin-3004-388-4-beta-is-now-available.86109/page-9)
 
 The FIX linked in that older discussion resets the retry counter after a successful custom DDNS update. That line is already present in 388.12_2; it does not address the Namecheap URL or hostname checks above.
+
+The checker uses a kernel flock on `/tmp/namecheap-ddns/check.lock`. A killed
+checker releases the lock automatically; the file stays in place for the next
+run. Old `/tmp/namecheap-ddns/lock` directories no longer block checks. Runtime
+files are private (directory 0700, umask 077). The DNS pipeline and updater do
+not inherit the checker lock.

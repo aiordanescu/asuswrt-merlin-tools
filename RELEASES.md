@@ -1,14 +1,14 @@
 # Prebuilt WAN tools
 
-[WAN tools — 2026-10-16 beta](https://github.com/aiordanescu/asuswrt-merlin-tools/releases/tag/wan-tools-2026.10.16-beta.1)
+[WAN tools — 2026-10-16 beta](https://github.com/aiordanescu/asuswrt-merlin-tools/releases/tag/wan-tools-2026.10.16-beta.2)
 provides static **aarch64 Linux** bundles. No compiler, Python or Entware is
 needed on the router. Tested target: RT-AX88U, Asuswrt-Merlin 3004.388.12_2,
 Linux 4.1.51. This is not a build for 32-bit ARM, MIPS or every Merlin model.
 
 | Download | Included production binaries | Installation |
 | --- | --- | --- |
-| [wan-affinity-aarch64.tar.gz](https://github.com/aiordanescu/asuswrt-merlin-tools/releases/download/wan-tools-2026.10.16-beta.1/wan-affinity-aarch64.tar.gz) | `wan-affinity` (0.4.5), controller, installer, disabled example, rollback and guides | [Affinity instructions](wan-affinity/README.md#download-and-install) |
-| [wan-watchdog-aarch64.tar.gz](https://github.com/aiordanescu/asuswrt-merlin-tools/releases/download/wan-tools-2026.10.16-beta.1/wan-watchdog-aarch64.tar.gz) | `wan-watchdog`, `wan-healthctl`, shell actuator/reference, installer and rollback | [WAN Watchdog instructions](wan-watchdog/GUIDE.md#download-and-qualification) |
+| [wan-affinity-aarch64.tar.gz](https://github.com/aiordanescu/asuswrt-merlin-tools/releases/download/wan-tools-2026.10.16-beta.2/wan-affinity-aarch64.tar.gz) | `wan-affinity` (0.4.6), controller, installer, disabled example, rollback and guides | [Affinity instructions](wan-affinity/README.md#download-and-install) |
+| [wan-watchdog-aarch64.tar.gz](https://github.com/aiordanescu/asuswrt-merlin-tools/releases/download/wan-tools-2026.10.16-beta.2/wan-watchdog-aarch64.tar.gz) | `wan-watchdog`, `wan-healthctl`, shell actuator/reference, installer and rollback | [WAN Watchdog instructions](wan-watchdog/GUIDE.md#download-and-qualification) |
 
 The components remain independently installed and operated. The shell watchdog
 and Namecheap DDNS helper do not need compilation. Test executables and fixture
@@ -41,6 +41,33 @@ Affinity's installer starts disabled. The watchdog installer requires healthy
 monitoring on both WANs and no active override. Use `--install` for handoff from a
 reviewed shell reference or `--upgrade` for an installed monitor; its supported
 settings are saved in private `service.conf` and retained through recovery.
+
+## Changes on 2026-10-16 (beta.2)
+
+WAN Affinity 0.4.6 and the updated watchdog close the remaining 22 Low review
+findings. The [disposition and evidence](REVIEW-LOW-2026-10-16.md) map every
+finding to its fix and regression coverage.
+
+- Affinity retains complete status at maximum mapping capacity, accepts quoted
+  literal configuration consistently, and preflights both hooks before stopping
+  an enabled service. Upgrade and rollback preserve enabled intent across
+  supervisor restart gaps. Unconfirmed identities and reconstruction limits
+  follow the reference-model contract.
+- Watchdog lifecycle operations preserve multiline settings, permit retry after
+  shell rollback and tolerate a reused stale PID when routing is unowned. Runtime
+  directories are private, raw sockets filter unrelated ICMP types, missing facts
+  report an invalid age, and obstructed health sockets retry without log growth.
+- DDNS workers detach without accumulating shell jobs. Auto overrides require
+  live ownership and recent progress. The Namecheap checker uses a kernel lock
+  that survives process death without blocking later checks.
+- Downloaded Markdown links resolve within the archive or to this source tag.
+  Both bundles retain optional build instructions and licensing.
+
+**Separate helper update:** the watchdog archive now includes
+`wan-watchdog-ddns.sh`. Its C-service installer does not replace the separately
+installed DDNS helper. Follow the [bundle instructions](wan-watchdog/BUNDLE-README.md)
+to update that script too, retaining custom paths and hooks. The Namecheap
+checker is a shell-only source update; use its [installation guide](namecheap-ddns/README.md).
 
 ## Changes on 2026-10-16 (beta.1)
 
@@ -112,23 +139,25 @@ run that rollback again; each run restarts the healthy shell.
 
 ## Verification for this release
 
-Affinity 0.4.5 passes 289 engine/checkpoint C checks (also under ASan/UBSan),
-21 worker C checks, the supervisor/checkpoint scheduling C suite (also sanitized)
-and 110 Python tests. The router qualification covers blocked checkpoint I/O,
-repeated single-packet freezes and SIGKILL bypass, a confirmed flow throughout,
-restart-budget enforcement and real Mini HTTPS adoption/restart in both modes.
-The [recovery report](wan-affinity/docs/RECOVERY-2026-10-16.md) records each test
-scope and measured distributions. The production update uses the supported
-installer under an independent rollback guard, with before/after checks of
-firewall rules, routing policy, pins and hooks.
+Affinity passes 299 engine/checkpoint C checks (including ASan/UBSan), 21 worker
+checks, the configuration and supervisor/scheduling suites, and 119 Python
+tests. Watchdog passes 434 core/codec C checks, 21 worker checks, portable
+runtime-decision tests, 11 adapter/parity tests and 88 shell/DDNS/lifecycle tests.
+The Namecheap SIGKILL/child-lock regression also passes.
 
-The watchdog executables are byte-identical to beta.5 and its scripts to
-beta.6. They pass 82 shell/DDNS/lifecycle tests, 11 adapter/parity tests and
-434 core/codec C checks. See the
-[maintenance qualification and review disposition](MAINTENANCE-2026-10-15.md)
-for the beta.5 router qualification, lease-bound routing decisions, slow-worker
-tests and the corrected kernel queue fallback guarantee. Build metadata and the
-validation run for this release are recorded in `BUILD-INFO.json`.
+On the qualified router, the current 39 watchdog and 30 DDNS shell mock tests
+pass through BusyBox. The private C run passes 675 socket checks, including
+subscriber capacity, unexpected client data and a different UID; 17 probe checks
+include the kernel ICMP filter. Additional checks cover configuration parsing,
+missing facts, directory permissions, listener recovery and NUL-safe capture.
+The file-only maintenance driver covers old-lease invalidation, slow workers,
+restart acknowledgement and shadow recovery without changing production routes.
+
+See the [review disposition](REVIEW-LOW-2026-10-16.md) for commands and scope,
+and the [recovery report](wan-affinity/docs/RECOVERY-2026-10-16.md) for the earlier
+queue and flow measurements. Each build's source commit and archive/binary
+hashes are in `BUILD-INFO.json`. Routine upgrades use the supported installer
+under an independent rollback guard; no physical outage is induced.
 
 The adoption update's prior mixed-session and sustained-throughput evidence is
 retained in the component documentation. Testing remains scoped to the listed

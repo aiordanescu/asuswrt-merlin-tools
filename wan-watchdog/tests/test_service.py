@@ -12,7 +12,7 @@ if (r/'fail-start').exists():raise SystemExit(1)
 lock=open(r/'lock','w');fcntl.flock(lock,fcntl.LOCK_EX)
 p=str(os.getpid());d=proc/p;d.mkdir()
 (d/'cmdline').write_bytes((str(base/'wan-watchdog')+'\0').encode() if kind=='monitor' else ('/bin/sh\0'+os.environ['WW_ENTRY']+'\0').encode())
-keys=['FAILOVER_MODE','FAILOVER_PRIORITY','PROBE_FALLBACKS','SECRET_SENTINEL']
+keys=['FAILOVER_MODE','FAILOVER_PRIORITY','PROBE_FALLBACKS','LAN_NETWORKS','DNS_SERVERS','SECRET_SENTINEL']
 (d/'environ').write_bytes(b'\0'.join((k+'='+os.environ[k]).encode() for k in keys if k in os.environ)+b'\0')
 (r/'wan-watchdog.pid').write_text(p+'\n')
 (r/'started-policy').write_text(os.environ.get('FAILOVER_MODE','whole_lan')+' '+os.environ.get('FAILOVER_PRIORITY','88'))
@@ -168,6 +168,46 @@ print(hashlib.md5(open(sys.argv[1],'rb').read()).hexdigest()+'  '+sys.argv[1])
         pid=(self.run/'wan-watchdog.pid').read_text().strip();(self.proc/pid/'cmdline').write_bytes(b'/foreign/owner\0')
         r=self.rollback();self.assertNotEqual(r.returncode,0);self.assertIn('unrecognized live owner',r.stderr)
         self.assertTrue((self.proc/pid/'cmdline').exists())
+
+    def test_first_install_can_retry_after_rollback(self):
+        self.start_old(kind='shell',FAILOVER_MODE='pinned',FAILOVER_PRIORITY='78')
+        self.assertEqual(self.install('--install').returncode,0)
+        self.assertEqual(self.rollback().returncode,0)
+        previous=(self.base/'rollback/latest').read_text()
+        r=self.install('--install');self.assertEqual(r.returncode,0,r.stdout+r.stderr)
+        self.assertNotEqual((self.base/'rollback/latest').read_text(),previous)
+        self.assertEqual((self.run/'started-policy').read_text(),'pinned 78')
+
+    def test_capture_failure_preserves_owner_and_creates_no_install_tree(self):
+        old=self.start_old(kind='shell',FAILOVER_PRIORITY='78')
+        self.write(self.bin/'hexdump','#!/bin/sh\nexit 17\n')
+        r=self.install('--install');self.assertNotEqual(r.returncode,0,r.stdout+r.stderr)
+        self.assertIsNone(old.poll());self.assertFalse(self.base.exists())
+        self.assertEqual(list(self.run.glob('install-policy.*')),[])
+
+    def test_reused_pid_with_free_lock_does_not_block_rollback(self):
+        old=self.start_old();self.assertEqual(self.install().returncode,0)
+        pid=int((self.run/'wan-watchdog.pid').read_text());os.kill(pid,signal.SIGTERM)
+        end=time.monotonic()+2
+        while (self.proc/str(pid)/'cmdline').exists() and time.monotonic()<end:time.sleep(.01)
+        foreign=self.proc/str(old.pid);foreign.mkdir(exist_ok=True)
+        (foreign/'cmdline').write_bytes(b'/unrelated/process\0')
+        (self.run/'wan-watchdog.pid').write_text(str(old.pid)+'\n')
+        r=self.rollback();self.assertEqual(r.returncode,0,r.stdout+r.stderr)
+        self.assertEqual((foreign/'cmdline').read_bytes(),b'/unrelated/process\0')
+
+    def test_runtime_modes_are_enforced_on_existing_directory(self):
+        self.start_old();self.run.chmod(0o777)
+        r=self.install();self.assertEqual(r.returncode,0,r.stdout+r.stderr)
+        self.assertEqual(self.run.stat().st_mode & 0o777,0o700)
+        self.assertEqual((self.run/'monitor.log').stat().st_mode & 0o777,0o600)
+
+    def test_multiline_policy_preserves_values_and_nul_boundaries(self):
+        value='192.168.1.0/24\n10.0.0.0/8'
+        self.start_old(kind='shell',LAN_NETWORKS=value,DNS_SERVERS='1.1.1.1\n8.8.8.8',SECRET_SENTINEL='secret\nFAILOVER_PRIORITY=99')
+        r=self.install('--install');self.assertEqual(r.returncode,0,r.stdout+r.stderr)
+        p=subprocess.run(['sh','-c','. "$1"; printf "%s" "$LAN_NETWORKS"','sh',str(self.owner/'service.conf')],capture_output=True,text=True)
+        self.assertEqual(p.stdout,value);self.assertNotIn('99',(self.owner/'service.conf').read_text())
 
     def test_optional_config_edits_are_exported_to_the_program(self):
         (self.owner/'service.conf').write_text('DDNS_LOOKUP_SECONDS=3\n')

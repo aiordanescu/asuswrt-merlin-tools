@@ -6,6 +6,8 @@
 #include <stdio.h>
 #include <stdlib.h>
 #include <unistd.h>
+#include <linux/icmp.h>
+#include <sys/socket.h>
 #define CHECK(x)                                                                                   \
     do {                                                                                           \
         checks++;                                                                                  \
@@ -27,6 +29,9 @@ int main(void) {
     ww_probe p, other;
     CHECK(!ww_probe_open(&p, loopback, "lo"));
     CHECK(!ww_probe_open(&other, loopback, "lo"));
+    struct icmp_filter filter={0};socklen_t flen=sizeof filter;
+    CHECK(!getsockopt(p.fd,IPPROTO_RAW,ICMP_FILTER,&filter,&flen));
+    CHECK(filter.data==~(1U<<ICMP_ECHOREPLY));
     ww_probe_send(&p, loopback, 1234, 1);
     CHECK(p.result == 0);
     usleep(10000);

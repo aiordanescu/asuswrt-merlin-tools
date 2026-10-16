@@ -47,6 +47,3 @@ HEALTH_SOURCE=auto
 HEALTH_SOCKET=/tmp/wan-watchdog/health.sock
 # Only read in HEALTH_SOURCE=legacy (private older fixtures/compatibility).
 SNAPSHOT_PATH=/tmp/wan-watchdog/health.v1
-
-# Runtime state (frequent, volatile) lives here.
-STATUS_DIR=/tmp/wan-affinity

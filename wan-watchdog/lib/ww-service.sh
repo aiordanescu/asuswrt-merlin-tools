@@ -10,6 +10,12 @@ PID="$RUN/wan-watchdog.pid"
 ww_die() { echo "wan-watchdog: $*" >&2; exit 1; }
 case "$BASE:$RUN:$OWNER:$ENTRY:$PROC:$CONFIG" in *[!A-Za-z0-9_./:-]*|*'..'*) ww_die 'unsafe lifecycle path';; esac
 ww_now() { awk '{print int($1)}' "$PROC/uptime"; }
+ww_runtime_private() {
+    umask 077
+    [ ! -L "$RUN" ] || ww_die 'symlink runtime directory'
+    mkdir -p "$RUN" || ww_die 'cannot create runtime directory'
+    chmod 700 "$RUN" || ww_die 'cannot protect runtime directory'
+}
 ww_policy_load() {
     [ ! -L "$CONFIG" ] || ww_die 'symlink service configuration'
     if [ -f "$CONFIG" ]; then . "$CONFIG"; fi
@@ -36,7 +42,12 @@ ww_no_foreign_owner() {
         read p <"$PID"
         case "$p" in ''|*[!0-9]*) ww_die 'invalid PID record; preserving it';; esac
         if [ -r "$PROC/$p/cmdline" ] && [ -n "$(tr '\000' ' ' <"$PROC/$p/cmdline")" ]; then
-            ww_owner || ww_die 'unrecognized live owner; preserving it'
+            if ! ww_owner; then
+                # A reused PID is not ownership. A held routing lock still
+                # requires investigation; never signal an unrelated process.
+                flock -n "$RUN/lock" true || ww_die 'unrecognized live owner; preserving it'
+                rm -f "$PID"
+            fi
         fi
     fi
 }
@@ -68,10 +79,18 @@ ww_capture_policy() {
     {
         printf '%s\n' 'FAILOVER_MODE=whole_lan' 'FAILOVER_PRIORITY=88' 'FAILOVER_TABLE=20188' \
           'PROBE_TABLE0=20186' 'PROBE_TABLE1=20187' 'LAN_NETWORKS=auto' 'DNS_SERVERS=auto'
-        tr '\000' '\n' <"$PROC/$capture_pid/environ" | awk '
+        # BSD awk and BusyBox awk differ on NUL record separators. Decode
+        # bytes explicitly, retaining record boundaries and literal newlines.
+        [ -r "$PROC/$capture_pid/environ" ] || return 1
+        hexdump -v -e '16/1 "%u " "\n"' "$PROC/$capture_pid/environ" | LC_ALL=C awk '
           BEGIN {split("FAILOVER_MODE FAILOVER_PRIORITY FAILOVER_TABLE PROBE_TABLE0 PROBE_TABLE1 PROBE_FALLBACKS LAN_NETWORKS DNS_SERVERS DDNS_HELPER DDNS_POSTCONF DDNS_CACHE_DIR DDNS_CUSTOM_CONFIG_DIR DDNS_RETRY_SECONDS DDNS_RECOVERY_SECONDS DDNS_LOOKUP_SECONDS",keys," ");for(i in keys)allow[keys[i]]=1}
-          {pos=index($0,"=");if(!pos)next;key=substr($0,1,pos-1);if(!allow[key])next
-           value=substr($0,pos+1);gsub(/\047/,"\047\\\047\047",value);printf "%s=\047%s\047\nexport %s\n",key,value,key}'
+          function record( pos,key,value) {
+            pos=index(row,"=");if(!pos)return;key=substr(row,1,pos-1);if(!allow[key])return
+            value=substr(row,pos+1);gsub(/\047/,"\047\\\047\047",value)
+            printf "%s=\047%s\047\nexport %s\n",key,value,key
+          }
+          {for(j=1;j<=NF;j++)if($j==0){record();row="";records++}else row=row sprintf("%c",$j)}
+          END {if(length(row))record();if(!records)exit 1}' || return 1
         printf '%s\n' 'export FAILOVER_MODE FAILOVER_PRIORITY FAILOVER_TABLE PROBE_TABLE0 PROBE_TABLE1 LAN_NETWORKS DNS_SERVERS'
     } >"$capture_path"
     chmod 600 "$capture_path"

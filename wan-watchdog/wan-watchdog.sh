@@ -8,6 +8,7 @@ BIN="$BASE/wan-watchdog"
 ADAPTER="$BASE/lib/ww-adapter.sh"
 LEGACY="$BASE/wan-watchdog-legacy.sh"
 . "$BASE/lib/ww-service.sh"
+umask 077
 ww_policy_load
 PID="$RUN/wan-watchdog.pid"
 case "$BASE:$RUN:$OWNER" in *'..'*|*' '*|*'
@@ -23,7 +24,9 @@ run)
     ;;
 start)
     alive && exit 0
-    mkdir -p "$RUN" || exit 1
+    ww_runtime_private
+    [ ! -L "$RUN/monitor.log" ] || exit 1
+    : >>"$RUN/monitor.log";chmod 600 "$RUN/monitor.log" || exit 1
     nohup sh "$0" run 7>&- 8>&- 9>&- </dev/null >>"$RUN/monitor.log" 2>&1 &
     tries=0
     while [ "$tries" -lt 10 ]; do
@@ -43,7 +46,7 @@ status)
     cat "$RUN/status";alive
     ;;
 cleanup|--cleanup)
-    mkdir -p "$RUN" || exit 1
+    ww_runtime_private
     exec 9>"$RUN/lock"
     flock -n 9 || { echo 'watchdog still owns routing; stop it first' >&2;exit 1; }
     STATE_DIR="$RUN" OWNERSHIP_DIR="$OWNER" WW_LEGACY="$LEGACY" WW_SHADOW=0 sh "$ADAPTER" cleanup

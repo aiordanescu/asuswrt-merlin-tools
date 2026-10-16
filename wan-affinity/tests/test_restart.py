@@ -51,6 +51,15 @@ class RestartTests(unittest.TestCase):
         engine = self._reconstruct([make_state("c1", "192.168.1.93", INTERNET, wan=None)])
         self.assertIn("192.168.1.93", engine.transitional)
 
+    def test_reconstruct_capacity_is_uncertain_without_partial_adoption(self):
+        from wan_affinity import Domain
+        states=[make_state(str(i), f"10.1.{i//256}.{i%256}", INTERNET, wan=0) for i in range(1025)]
+        engine=self._reconstruct(states,Domain(lan_cidrs=("10.0.0.0/8",)))
+        self.assertTrue(engine.uncertain)
+        self.assertEqual(engine.last_reconcile_error,"reconstruct-capacity")
+        self.assertEqual(len(engine.states),1025)
+        self.assertEqual(engine.assoc,{})
+
     def test_invalid_dump_reconstructs_nothing(self):
         clock = Clock(500.0)
         engine = make_engine(clock=clock)

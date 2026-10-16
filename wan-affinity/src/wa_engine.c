@@ -356,6 +356,7 @@ static wa_assoc *assoc_add(wa_engine *e, uint32_t src, int wan, int pref, double
     memset(a, 0, sizeof *a);
     a->src = src;
     a->binding_id = ++e->next_binding_id;
+    a->epoch = ++e->epoch;
     a->wan = wan;
     a->preferred = pref;
     a->reason = reason;
@@ -872,7 +873,11 @@ void wa_reconstruct(wa_engine *e) {
                 break;
             }
         if (gi < 0) {
-            if (ng >= WA_MAX_ASSOC) continue;
+            if (ng >= WA_MAX_ASSOC) {
+                e->uncertain=1;
+                snprintf(e->last_error,sizeof e->last_error,"reconstruct-capacity");
+                return;
+            }
             g[ng].src = s->src;
             g[ng].wans = 0;
             g[ng].unattributed = 0;
@@ -937,34 +942,48 @@ static const char *elig_str(wa_elig s) {
     return s == WA_ELIGIBLE ? "eligible" : (s == WA_UNUSABLE ? "unusable" : "unknown");
 }
 
-void wa_engine_status(const wa_engine *e, char *buf, size_t len) {
-    size_t used = 0;
-    int unobserved=0,legacy=0;
-    for(int i=0;i<e->n_state;i++){unobserved+=e->state[i].provisional!=0;legacy+=e->state[i].binding_id==WA_BINDING_LEGACY;}
-    used += (size_t)snprintf(buf + used, len - used,
-                             "mode=%s enhanced=%s uncertain=%s wan0=%s wan1=%s "
-                             "assoc=%d states=%d unobserved=%d admissions=%zu last_error=%s legacy_states=%d\n",
-                             e->mode == WA_AFFINITY ? "affinity" : "sticky",
-                             e->health.enhanced ? "yes" : "no", e->uncertain ? "yes" : "no",
-                             elig_str(wa_health_eligibility((wa_engine *)e, 0)),
-                             elig_str(wa_health_eligibility((wa_engine *)e, 1)), e->n_assoc,e->n_state,unobserved,
-                             e->admissions, e->last_error[0] ? e->last_error : "-",legacy);
-    for (int i = 0; i < e->n_assoc && used < len; i++) {
-        char ip[16];
-        wa_ip_to_str(e->assoc[i].src, ip, sizeof ip);
+/* Append complete lines only, reserving room for a truncation marker. */
+static int status_line(char *buf,size_t len,size_t *used,const char *line) {
+    size_t n=strlen(line);
+    if(*used+n+32>=len)return 0;
+    memcpy(buf+*used,line,n+1);*used+=n;return 1;
+}
+void wa_engine_status(const wa_engine *e,char *buf,size_t len) {
+    if(!len)return;
+    buf[0]=0;size_t used=0;char line[512];int unobserved=0,legacy=0;
+    for(int i=0;i<e->n_state;i++) {
+        unobserved+=e->state[i].provisional!=0;
+        legacy+=e->state[i].binding_id==WA_BINDING_LEGACY;
+    }
+    snprintf(line,sizeof line,"mode=%s enhanced=%s uncertain=%s wan0=%s wan1=%s "
+        "assoc=%d states=%d unobserved=%d admissions=%zu last_error=%s legacy_states=%d\n",
+        e->mode==WA_AFFINITY?"affinity":"sticky",e->health.enhanced?"yes":"no",
+        e->uncertain?"yes":"no",elig_str(wa_health_eligibility((wa_engine *)e,0)),
+        elig_str(wa_health_eligibility((wa_engine *)e,1)),e->n_assoc,e->n_state,unobserved,
+        e->admissions,e->last_error[0]?e->last_error:"-",legacy);
+    if(!status_line(buf,len,&used,line))goto truncated;
+    if(e->n_transitional) {
+        snprintf(line,sizeof line,"awaiting_new=%d\n",e->n_transitional);
+        if(!status_line(buf,len,&used,line))goto truncated;
+    }
+    for(int i=0;i<e->n_assoc;i++) {
+        char ip[16];wa_ip_to_str(e->assoc[i].src,ip,sizeof ip);
         int members=0,old=0;
         for(int j=0;j<e->n_state;j++)if(e->state[j].src==e->assoc[i].src && wa_state_relevant(e,&e->state[j])) {
             members+=e->state[j].binding_id==e->assoc[i].binding_id;
             old+=e->state[j].binding_id==WA_BINDING_LEGACY;
         }
-        used += (size_t)snprintf(buf + used, len - used,
-                                 "src=%s wan=%d preferred=%d reason=%s failovers=%d pending=%s binding=%llu members=%d legacy=%d\n",
-                                 ip, e->assoc[i].wan, e->assoc[i].preferred,
-                                 e->assoc[i].reason, e->assoc[i].failovers,
-                                 e->assoc[i].have_candidate ? "yes" : "no",
-                                 (unsigned long long)e->assoc[i].binding_id,members,old);
+        snprintf(line,sizeof line,"src=%s wan=%d preferred=%d reason=%s failovers=%d pending=%s "
+            "binding=%llu members=%d legacy=%d\n",ip,e->assoc[i].wan,e->assoc[i].preferred,
+            e->assoc[i].reason?e->assoc[i].reason:"-",e->assoc[i].failovers,
+            e->assoc[i].have_candidate?"yes":"no",(unsigned long long)e->assoc[i].binding_id,members,old);
+        if(!status_line(buf,len,&used,line)) {
+            snprintf(line,sizeof line,"truncated=%d\n",e->n_assoc-i);
+            if(strlen(line)<len-used)memcpy(buf+used,line,strlen(line)+1);
+            return;
+        }
     }
-    if (e->n_transitional && used < len) {
-        used += (size_t)snprintf(buf + used, len - used, "awaiting_new=%d\n", e->n_transitional);
-    }
+    return;
+truncated:
+    if(len>=13)memcpy(buf+used,"truncated=1\n",13);
 }

@@ -36,6 +36,8 @@ static int parse_firmware(const char *line,wa_ct_record *out,int unconfirmed) {
     }
     if(!out->proto)return 0;
     out->unconfirmed=unconfirmed;
+    /* Only confirmed identities are stable across supported kernel variants. */
+    if(unconfirmed)out->kernel_id=0;
     return bad || !src || !dst || !sp || !dp || (!unconfirmed && (!id || !out->kernel_id)) ? -1 : 1;
 }
 

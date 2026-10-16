@@ -49,6 +49,7 @@ is_ipv4() {
 }
 load_config() {
     [ -f "$CFG" ] || fail "config $CFG not found"
+    if [ -x "$BIN" ];then "$BIN" --config "$CFG" --check-config >/dev/null || fail 'helper rejected configuration';fi
     . "$CFG"
     : "${MODE:=sticky}" "${QUEUE_NUM:=20880}" "${CLIENT:=}" "${LAN_SCOPE:=0}" "${ENABLED:=0}"
     : "${SUPERVISE:=0}"
@@ -64,6 +65,7 @@ config_disabled() {
     } END {exit !disabled}' "$CFG"
 }
 validate_config() {
+    [ "${STATUS_DIR:-$RUN}" = "$RUN" ] || fail "STATUS_DIR is helper-only; controller runtime is $RUN"
     case "$MODE" in sticky|affinity) ;; *) fail 'invalid MODE' ;; esac
     case "$QUEUE_NUM" in ''|*[!0-9]*) fail 'invalid queue number' ;; esac
     [ "$QUEUE_NUM" -le 65535 ] || fail 'queue number out of range'

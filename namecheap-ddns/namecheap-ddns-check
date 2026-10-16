@@ -5,10 +5,13 @@ TAG=namecheap-ddns
 [ "$(nvram get ddns_enable_x)" = 1 ] || exit 0
 [ "$(nvram get ddns_server_x)" = WWW.NAMECHEAP.COM ] || exit 0
 
-STATE=/tmp/namecheap-ddns
+umask 077
+STATE=${NAMECHEAP_DDNS_STATE:-/tmp/namecheap-ddns}
+[ ! -L "$STATE" ] || exit 1
 mkdir -p "$STATE" || exit 1
-mkdir "$STATE/lock" 2>/dev/null || exit 0
-trap 'rmdir "$STATE/lock"' EXIT
+chmod 700 "$STATE" || exit 1
+exec 9>"$STATE/check.lock"
+flock -n 9 || exit 0
 trap 'exit 1' HUP INT TERM
 
 # Honour the configured verification interval; cron checks every five minutes.
@@ -52,7 +55,7 @@ REASON=
 if [ "$(nvram get ddns_regular_check)" = 1 ]; then
     ANSWER=
     for RESOLVER in 1.1.1.1 8.8.8.8; do
-        ANSWER=$(nslookup "$FQDN" "$RESOLVER" 2>/dev/null | awk '
+        ANSWER=$(exec 9>&-; nslookup "$FQDN" "$RESOLVER" 2>/dev/null | awk '
             /^Name:/ { answer=1; next }
             answer && /^Address [0-9]+:/ && $3 ~ /^[0-9]+\.[0-9]+\.[0-9]+\.[0-9]+$/ { print $3; exit }
         ')
@@ -76,4 +79,4 @@ esac
 logger -t "$TAG" "$REASON; requesting update with explicit WAN IP"
 # Merlin checks for this file before generating config or invoking postconf.
 rm -f /var/cache/inadyn/*.cache
-service restart_ddns
+service restart_ddns 9>&-

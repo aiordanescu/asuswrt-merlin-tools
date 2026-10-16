@@ -656,7 +656,41 @@ static void test_view_keeps_only_placeable_rows(void) {
     CHECK(view.count==WA_MAX_STATES && view.overflow==10,"placeable rows beyond capacity are counted, not fatal");
 }
 
+static void test_review_status_epochs_and_capacity(void) {
+    static wa_engine e;static char text[WA_MAX_ASSOC*256+2048];
+    base_engine(&e,WA_STICKY,NULL);both_up(&e);
+    wa_domain_set_lan(&e,ip("10.0.0.0"),ip("255.0.0.0"));
+    for(int i=0;i<WA_MAX_ASSOC;i++)
+        wa_admission_decision(&e,1,ip("10.1.0.1")+(uint32_t)i,ip("93.184.216.34"),6,40000,443,0,(uint64_t)i+1);
+    CHECK(e.n_assoc==WA_MAX_ASSOC,"maximum mappings admitted");
+    CHECK(e.assoc[0].epoch==1 && e.assoc[WA_MAX_ASSOC-1].epoch==WA_MAX_ASSOC,
+          "creation advances mapping epochs");
+    e.n_transitional=1;e.transitional[0]=ip("10.2.0.1");
+    wa_engine_status(&e,text,sizeof text);
+    CHECK(strstr(text,"awaiting_new=1\n") && !strstr(text,"truncated="),"full status retains every section");
+    char last[16];wa_ip_to_str(e.assoc[e.n_assoc-1].src,last,sizeof last);
+    CHECK(strstr(text,last)!=NULL && text[strlen(text)-1]=='\n',"last mapping is complete");
+    char small[512];wa_engine_status(&e,small,sizeof small);
+    CHECK(strstr(small,"truncated=") && strstr(small,"awaiting_new=1\n"),"bounded output reports truncation after counts");
+    CHECK(small[strlen(small)-1]=='\n',"short output ends at a line boundary");
+    char tiny[13];wa_engine_status(&e,tiny,sizeof tiny);
+    CHECK(!strcmp(tiny,"truncated=1\n"),"tiny output is an explicit complete diagnostic");
+    base_engine(&e,WA_STICKY,NULL);wa_domain_set_lan(&e,ip("10.0.0.0"),ip("255.0.0.0"));
+    for(int i=0;i<=WA_MAX_ASSOC;i++) {
+        wa_state *st=&e.state[e.n_state++];memset(st,0,sizeof *st);
+        st->src=ip("10.1.0.1")+(uint32_t)i;st->dst=ip("93.184.216.34");st->proto=6;st->wan=0;
+    }
+    wa_reconstruct(&e);
+    CHECK(e.uncertain && !strcmp(e.last_error,"reconstruct-capacity") && !e.n_assoc,
+          "source overflow retains states and refuses partial reconstruction");
+    CHECK(e.n_state==WA_MAX_ASSOC+1,"capacity overflow preserves every existing connection");
+    wa_ct_record row;
+    CHECK(wa_parse_unconfirmed_conntrack("tcp 6 30 SYN_SENT src=192.168.1.50 dst=93.184.216.34 sport=40000 dport=443 id=999",&row)==1 && row.kernel_id==0,
+          "unconfirmed kernel identity is deliberately unstable");
+}
+
 int main(void) {
+    test_review_status_epochs_and_capacity();
     test_domain_merges_covered_prefixes();
     test_domain_capacity_is_reported_not_truncated();
     test_view_keeps_only_placeable_rows();

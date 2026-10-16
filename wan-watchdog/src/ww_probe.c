@@ -4,7 +4,7 @@
 #include <errno.h>
 #include <fcntl.h>
 #include <netinet/ip.h>
-#include <netinet/ip_icmp.h>
+#include <linux/icmp.h>
 #include <string.h>
 #include <sys/socket.h>
 #include <unistd.h>
@@ -40,7 +40,9 @@ int ww_probe_open(ww_probe *p, uint32_t source, const char *ifname) {
         return -1;
     struct sockaddr_in a = {.sin_family = AF_INET};
     a.sin_addr.s_addr = source;
-    if (bind(fd, (void *)&a, sizeof a) ||
+    struct icmp_filter filter = {.data = ~(1U << ICMP_ECHOREPLY)};
+    if (setsockopt(fd, IPPROTO_RAW, ICMP_FILTER, &filter, sizeof filter) ||
+        bind(fd, (void *)&a, sizeof a) ||
         setsockopt(fd, SOL_SOCKET, SO_BINDTODEVICE, ifname, (socklen_t)(strlen(ifname) + 1))) {
         close(fd);
         return -1;

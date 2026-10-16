@@ -1,3 +1,4 @@
+BUNDLE_REF ?= main
 CC ?= cc
 CFLAGS ?= -std=c11 -O2 -Wall -Wextra -Werror
 BUILD := build
@@ -13,10 +14,11 @@ ROUTER_LDFLAGS ?= -static
 .PHONY: all host-tests router router-test clean
 all: host-tests
 
-host-tests: $(BUILD)/test_engine $(BUILD)/test_worker $(BUILD)/test_supervisor
+host-tests: $(BUILD)/test_engine $(BUILD)/test_worker $(BUILD)/test_supervisor $(BUILD)/test_config
 	$(BUILD)/test_engine
 	$(BUILD)/test_worker
 	$(BUILD)/test_supervisor
+	$(BUILD)/test_config
 
 $(BUILD)/test_supervisor: src/wa_supervisor.c src/wa_supervisor.h src/wa_schedule.h tests/c/test_supervisor.c
 	@mkdir -p $(BUILD)
@@ -32,7 +34,7 @@ $(BUILD)/test_engine: src/wa_engine.c src/wa_engine.h src/wa_conntrack.c src/wa_
 
 router: $(BUILD)/wan-affinity
 
-$(BUILD)/wan-affinity: src/wan_affinity.c src/wa_engine.c src/wa_engine.h src/wa_conntrack.c src/wa_conntrack.h src/wa_nl_frame.h src/wa_policy.h src/wa_worker.c src/wa_worker.h src/wa_schedule.h src/wa_supervisor.c src/wa_supervisor.h $(CHECKPOINT) $(HEALTH) src/wa_health_client.h ../common/wan-health/wh_protocol.h ../common/wan-health/wh_socket.h
+$(BUILD)/wan-affinity: src/wan_affinity.c src/wa_config_line.h src/wa_engine.c src/wa_engine.h src/wa_conntrack.c src/wa_conntrack.h src/wa_nl_frame.h src/wa_policy.h src/wa_worker.c src/wa_worker.h src/wa_schedule.h src/wa_supervisor.c src/wa_supervisor.h $(CHECKPOINT) $(HEALTH) src/wa_health_client.h ../common/wan-health/wh_protocol.h ../common/wan-health/wh_socket.h
 	@mkdir -p $(BUILD)
 	$(ROUTER_CC) $(CFLAGS) $(ROUTER_LDFLAGS) -Isrc $(HEALTH_INC) src/wan_affinity.c src/wa_engine.c src/wa_conntrack.c src/wa_worker.c src/wa_supervisor.c src/wa_checkpoint.c $(HEALTH) -o $@
 	@echo "built $@ (aarch64)"
@@ -54,6 +56,8 @@ bundle: router
 	cp docs/QUALIFICATION-2026-10-15.md docs/HEALTH-SOCKET.md docs/THROUGHPUT-2026-10-15.md docs/ADOPTION-2026-10-15.md docs/RECOVERY-2026-10-16.md $(BUILD)/bundle/docs/
 	cp LICENSES/*.txt $(BUILD)/bundle/LICENSES/
 	chmod 700 $(BUILD)/bundle $(BUILD)/bundle/wan-affinity $(BUILD)/bundle/*.sh
+	cp ../REVIEW-LOW-2026-10-16.md $(BUILD)/bundle/docs/
+	python3 ../tools/bundle_links.py wan-affinity $(BUILD)/bundle --ref "$(BUNDLE_REF)"
 	COPYFILE_DISABLE=1 tar --format=ustar -czf $(BUILD)/wan-affinity-aarch64.tar.gz -C $(BUILD)/bundle .
 
 # Consumer-side shared-health qualification; intentionally outside watchdog.
@@ -73,3 +77,7 @@ sanitize:
 	$(BUILD)/test_engine_sanitized
 	$(CC) -std=c11 -O1 -g -fsanitize=address,undefined -fno-omit-frame-pointer -Isrc tests/c/test_supervisor.c src/wa_supervisor.c -o $(BUILD)/test_supervisor_sanitized
 	$(BUILD)/test_supervisor_sanitized
+
+$(BUILD)/test_config: tests/c/test_config.c src/wa_config_line.h
+	@mkdir -p $(BUILD)
+	$(CC) $(CFLAGS) -Isrc tests/c/test_config.c -o $@

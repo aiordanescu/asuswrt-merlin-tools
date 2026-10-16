@@ -281,6 +281,10 @@ class Engine:
         for state in self.states.values():
             if state.relevant_in(self.domain):
                 by_src.setdefault(state.src, []).append(state)
+        if len(by_src) > 1024:
+            self.uncertain = True
+            self.last_reconcile_error = "reconstruct-capacity"
+            return
         now = self.clock()
         for src, states in by_src.items():
             if src in self.assoc:

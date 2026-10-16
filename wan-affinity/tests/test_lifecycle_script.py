@@ -115,6 +115,7 @@ class LifecycleScriptTest(unittest.TestCase):
         body='''#!/usr/bin/env python3
 import os,sys,time,signal
 args=sys.argv
+if '--check-config' in args:sys.exit(0)
 run=args[args.index('--status-dir')+1]
 queue=args[args.index('--queue')+1]
 proc=os.environ['WA_PROC']
@@ -394,6 +395,23 @@ open(proc+'/net/netfilter/nfnetlink_queue','w').close()
         r=self._run("start")
         self.assertNotEqual(r.returncode,0)
         self.assertIn("exactly one IPv4",r.stderr)
+
+    def test_controller_refuses_a_conflicting_helper_runtime(self):
+        self._write_config(enabled=1);self._fake_binary();self._seed([])
+        with open(self.cfg,"a") as fh:fh.write("STATUS_DIR=/tmp/elsewhere\n")
+        r=self._run("start")
+        self.assertNotEqual(r.returncode,0)
+        self.assertIn("STATUS_DIR is helper-only",r.stderr)
+
+    def test_helper_config_error_is_reported_before_startup(self):
+        self._write_config(enabled=1);self._seed([])
+        path=os.path.join(self.base,"wan-affinity")
+        with open(path,"w") as fh:fh.write('#!/bin/sh\necho "invalid literal assignment" >&2\nexit 2\n')
+        os.chmod(path,0o700)
+        r=self._run("start")
+        self.assertNotEqual(r.returncode,0)
+        self.assertIn("helper rejected configuration",r.stderr)
+        self.assertIn("invalid literal assignment",r.stderr)
 
     def test_ssh_management_client_is_rejected(self):
         self._write_config(enabled=1);self._seed([])

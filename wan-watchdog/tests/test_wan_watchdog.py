@@ -48,7 +48,7 @@ NOW=100
                     'STATE_DIR=' + shlex.quote(remote_state) + ' WAN_WATCHDOG_LIBRARY_ONLY=1 '
                     'WATCHDOG_SOURCE=' + shlex.quote(remote_source) + ' OWNERSHIP_DIR=' + shlex.quote(remote_state+'/ownership') + ' sh -s'
                 )
-                result = subprocess.run(['ssh', '-o', 'BatchMode=yes', router, remote_command],
+                result = subprocess.run(['ssh', *shlex.split(os.environ.get('WAN_WATCHDOG_TEST_SSH_OPTIONS', '')), '-o', 'BatchMode=yes', router, remote_command],
                                         input=shell, text=True, capture_output=True)
             else:
                 result = subprocess.run(['sh'], input=shell, text=True, env=env, capture_output=True)
