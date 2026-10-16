@@ -23,15 +23,21 @@ for name in services-start firewall-start; do
     cp -p "$file.wa-original" "$file.wa-new"
     if [ "$action" = install ]; then
         {
-            printf '#!/bin/sh\n# BEGIN wan-affinity\n'
+            first=$(head -n 1 "$file.wa-clean")
+            case "$first" in '#!'*) printf '%s\n' "$first";; *) printf '#!/bin/sh\n';; esac
+            printf '# BEGIN wan-affinity\n'
             printf 'if [ -x %s/wan-affinity.sh ]; then\n' "$BASE"
             printf '    %s/wan-affinity.sh reconcile >/dev/null 2>&1 &\n' "$BASE"
             printf 'fi\n# END wan-affinity\n'
-            # Keep the original shebang only once.
-            sed '1{/^#!/d;}' "$file.wa-clean"
+            case "$first" in '#!'*) sed '1d' "$file.wa-clean";; *) cat "$file.wa-clean";; esac
         } >"$file.wa-new"
     else cat "$file.wa-clean" >"$file.wa-new"; fi
-    sh -n "$file.wa-new"
+    # Check with the declared shell, preserving options such as bash -e.
+    first=$(head -n 1 "$file.wa-new")
+    case "$first" in '#!'*) interpreter=${first#\#!};; *) interpreter=/bin/sh;; esac
+    set -- $interpreter
+    case "${1##*/}" in sh|ash|dash|bash|ksh|zsh|env) ;; *) echo "unsupported hook interpreter: $first" >&2;exit 1;; esac
+    "$@" -n "$file.wa-new"
     if [ -f "$file" ]; then
         cmp -s "$file" "$file.wa-original" || { echo "hook changed concurrently: $file" >&2;exit 1; }
     else chmod 700 "$file.wa-new"; fi

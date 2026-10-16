@@ -62,7 +62,7 @@
 #include <time.h>
 #include <unistd.h>
 
-#define WA_VERSION "0.4.2"
+#define WA_VERSION "0.4.3"
 static wa_health_feed health_feed;
 
 static volatile sig_atomic_t stopping;

@@ -149,8 +149,11 @@ The helper supports the default conntrack zone, 1,024 source associations and
 4,096 tracked tuples. Full, malformed, stale or incomplete views retain
 uncertainty and do not prove idle. Unknown policy-routing selectors may bypass
 more traffic than necessary, including an entire LAN for a mark-only VPN rule.
-Kernel fallback preserves firmware connectivity but cannot preserve the sticky
-placement guarantee while the helper is unavailable or declines admission.
+The running helper can return admission to firmware balancing. Kernel
+absent-listener/queue-full bypass skips later rules in the current mangle hook;
+remaining routing policy selects the path. This protects against queue rejection
+in those cases, but guarantees neither firmware weighted balancing nor sticky
+placement. Packets already queued can still be lost when a listener exits.
 
 ## Reproduction and evidence
 

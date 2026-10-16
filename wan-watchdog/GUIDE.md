@@ -8,10 +8,15 @@ It preserves the shell thresholds and whole-LAN/pinned responsibilities.
 The shell stays as the routing/DDNS reference and rollback path.
 `lib/ww-adapter.sh` sources it in a bounded worker receiving explicit numeric
 intent. It preserves exact ownership, VPN guards, local-route exceptions and
-DDNS policy. Five-second deadlines, process groups and parent-death handling
+DDNS policy. Five-second worker deadlines, process groups and parent-death handling
 bound worker failures. Before mutation, the worker verifies that the lease,
 interface, gateway and probe targets still match its decision. Monitoring and
-publication continue while commands run. Network transmission errors on a
+publication continue while commands run. Pending decisions are discarded when
+WAN configuration changes. Fact age is measured from collection start; its
+11-second bound covers two serialized five-second workers and a probe deadline.
+A failed worker immediately invalidates its facts. Status reports `fact_age_ms`
+and `stale_fact_cycles`; these are separate from the 30-second loss window.
+Network transmission errors on a
 validated source/route count as lost attempts; local resource, permission and
 address errors remain UNKNOWN.
 
@@ -20,10 +25,13 @@ consumers without watchdog policy changes. Samples stay in memory. Status and
 exclusion checkpoints stay in RAM under `/tmp`; flash writes retain the
 existing ownership/transition purpose.
 
+The [maintenance qualification](../MAINTENANCE-2026-10-15.md) records the
+lifecycle, lease-change and slow-worker safeguards.
+
 ## Download and qualification
 
 Download **`wan-watchdog-aarch64.tar.gz`** and **`SHA256SUMS`** from the
-[prebuilt beta release](https://github.com/aiordanescu/asuswrt-merlin-tools/releases/tag/wan-tools-2026.10.15-beta.4)
+[prebuilt beta release](https://github.com/aiordanescu/asuswrt-merlin-tools/releases/tag/wan-tools-2026.10.15-beta.5)
 to your computer. No compiler, Python or Entware is needed on the router.
 Target: **aarch64 Linux**, tested on RT-AX88U / Merlin 3004.388.12_2.
 Compare the archive's SHA-256 with its entry in `SHA256SUMS`, for example on
@@ -49,6 +57,8 @@ Router drivers use SSH alias `router` and a private multiplexed connection:
 - `run_shadow.py`: read-only comparison with the live shell.
 - `run_orchestrator.py`: real loopback ICMP, a file-only actuator, real recovery
   timing, failed restoration, monitor stall and hung-worker behavior.
+- `run_maintenance.py`: lease-change, slow-worker, shadow recovery and restart diagnostics with file-only routing.
+- `run_handoff.py`: real install/rollback of a private loopback service, preserving pinned mode and custom priority.
 - `run_actuator.py`: real owned rules in private tables with a loopback-only
   source, followed by exact cleanup verification.
 
@@ -72,13 +82,19 @@ For a first installation, follow the [shell setup](README.md#shell-installation-
 first to establish the reference, DDNS helper and existing hooks. The C-monitor
 bundle upgrades that running reference; it is not a fresh-install bypass.
 Qualify shadow mode on the target firmware and preserve source/runtime backups.
-The installer uses the standard `/jffs` and `/tmp/wan-watchdog` paths. It was
-qualified with the default routing namespace. Custom paths, namespaces or
-modified shell references need a reviewed manual migration; copy all required
-environment overrides into any handoff and startup commands. The installer
-requires two healthy WANs and an installed shell script identical to the frozen
-reference. Review differing customizations first.
-Existing environment settings in `services-start` remain effective.
+The installer uses the standard `/jffs` and `/tmp/wan-watchdog` paths and
+requires two eligible WANs with no active override. It supports first handoff
+from the included shell reference or its reviewed predecessor, and upgrades
+of the installed C monitor. Review locally edited shell policies before handoff.
+
+At first handoff it captures only supported settings from the running owner's
+environment, including pinned/whole-LAN mode, routing priorities and tables,
+LAN/DNS scope and DDNS helper settings. They are saved privately in
+`/jffs/wan-watchdog/service.conf`. No credentials or complete process environment
+are copied. This file becomes the configuration used for starts, upgrades and
+rollback. Edit it to change installed service settings; keep `services-start`
+as the existing launch hook. Its old environment overrides no longer replace
+settings saved in this file.
 
 Transfer the verified downloaded archive from your computer (an SSH alias
 `router` is used here):
@@ -97,7 +113,7 @@ tar -xzf /tmp/wan-watchdog-aarch64.tar.gz -C /tmp/wan-watchdog-stage
 cd /tmp/wan-watchdog-stage
 ```
 
-Then install:
+For the first shell-to-monitor handoff:
 
 ```sh
 sh install.sh --install
@@ -106,12 +122,18 @@ sh install.sh --install
 /jffs/wan-watchdog/service/wan-healthctl --count 0 --timeout 0
 ```
 
-The installer saves the old entry point, arms an independent two-minute
-rollback guard, stops the identified shell owner and atomically replaces its
-entry point with the compatible wrapper. The monitor process takes the shared
-exclusive lock and preserves the routing ledger and failover markers. Fresh
-eligible health on both WANs disarms the guard. Installation edits neither
-NVRAM nor existing hooks, and does not install or enable affinity.
+For an installed monitor, stage the new bundle in a separate directory and run
+`sh install.sh --upgrade` from that directory. The installer snapshots the
+previous executable, adapter/reference, entry point and configuration before
+stopping the identified owner. It waits for the shared lock too, including
+short-lived shell probe children. It never overwrites a running executable.
+
+The installer has one 90-second deadline. An independent guard attempts rollback
+at 120 seconds if qualification has not committed. Success and automatic
+rollback atomically claim the same transaction, so both cannot win. Qualification
+requires fresh eligible health from both WANs with no routing error. The routing
+ledger and failover markers survive the handoff. Installation edits neither
+NVRAM nor existing hooks and does not install or enable affinity.
 
 The monitor is single-instance and takes the same ownership lock as the
 shell. Raw ICMP requires root; it opens no network listening port. The Unix
@@ -123,22 +145,25 @@ launch in `services-start`. Controls: `start`, `stop`, `status`,
 cleanup refuses while a routing owner holds the lock. Keep one routing owner.
 
 ```sh
-# Restore the saved shell service without discarding routing state:
+# Restore the previous service without discarding routing state:
 sh /jffs/wan-watchdog/service/rollback.sh --rollback
 ```
 
-Rollback retains the inactive C-monitor bundle for inspection. After confirming
-the restored shell is running and matches its saved entry point, remove that
-inactive directory to uninstall the monitor replacement. Removing the watchdog
-itself follows the original README's hook-removal/owned-cleanup procedure.
-Never delete the shared ownership ledger as an uninstall shortcut.
+A first-install rollback restores the previous shell. An upgrade rollback restores
+the previous monitor executable and adapter, retaining the hardened lifecycle
+tools. Both restore the saved configuration. Rollback rejects unrecognized live
+owners, waits for inherited locks, removes demonstrably stale PID records, and
+verifies the replacement's process, lock and monitoring output before reporting
+success. A failed restart is reported as a failure and retains its snapshot for
+retry. The recovery mutex uses `flock`, so an interrupted shell does not leave a
+permanent directory lock.
 
-The initial installer refuses an existing `/jffs/wan-watchdog/service` directory. An upgrade must
-stage/verify a new bundle, retain the known-good version, and use the same
-guarded stop/atomic-entry/start/health-check handoff. Never overwrite a running
-binary. Reboot/firewall-rebuild and physical WAN-outage qualification require
-a suitable maintenance environment; live checks do not manufacture those
-events.
+Snapshots are retained under `service/rollback/`; `latest` identifies the current
+rollback transaction. Keep the snapshot needed for recovery. Removing the
+watchdog itself follows the original README's hook-removal/owned-cleanup
+procedure. Never delete the shared ownership ledger as an uninstall shortcut.
+Reboot/firewall-rebuild and physical WAN-outage qualification require a suitable
+maintenance environment; live checks do not manufacture those events.
 
 ## Optional source build
 

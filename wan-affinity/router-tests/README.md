@@ -204,3 +204,16 @@ Cleanup verifies restored pins, rules and hooks. Firewall comparisons ignore
 only live chain counters and generated timestamp comments. The driver never
 flushes conntrack or stops a production service. Allow its test ports to expire
 before another run. See the [adoption report](../docs/ADOPTION-2026-10-15.md).
+
+## Queue fallback regression
+
+`run_queue_fallback.py --allow-router-loopback-tests --probe PATH --evidence PATH`
+uses the separately built `nfq_probe.c` tool, a dedicated loopback UDP port and
+an unused queue. It checks whether later mangle rules run during absent-listener
+and queue-full bypass, then removes its objects and compares the firewall,
+policy rules and production PIDs. It does not stop the production helper.
+
+`run_off_switch.py --evidence PATH` starts a private helper/controller with a
+synthetic loopback LAN visible only to that fixture. It checks disable and
+reconciliation with invalid, missing and syntactically broken configurations,
+then compares production processes, rules and firewall state.

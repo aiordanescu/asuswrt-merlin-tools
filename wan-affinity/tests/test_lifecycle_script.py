@@ -197,6 +197,43 @@ open(proc+'/net/netfilter/nfnetlink_queue','w').close()
             self.assertIn("ENABLED=0", fh.read())
         self.assertEqual(self._chains()["PREROUTING"], [balance])
 
+    def test_disable_does_not_require_a_valid_or_present_config(self):
+        for contents in ["ENABLED=1\nMODE=Sticky\n", "ENABLED=1\nMODE='broken\n", None]:
+            with self.subTest(contents=contents):
+                if contents is None:
+                    os.unlink(self.cfg)
+                else:
+                    with open(self.cfg,"w") as fh:fh.write(contents)
+                self._seed([["-j","balance"],["-i","br0","-j","WA_ADMIT"]],extra_chains={"WA_ADMIT":[["-j","RETURN"]]})
+                r=self._run("disable",extra_env={"SSH_CONNECTION":"192.168.1.100 1234 192.168.1.1 22"})
+                self.assertEqual(r.returncode,0,r.stderr)
+                self.assertEqual(self._chains()["PREROUTING"],[["-j","balance"]])
+                with open(self.cfg) as fh:self.assertIn("ENABLED=0",fh.read())
+
+    def test_disabled_reconcile_stops_even_with_broken_shell_syntax(self):
+        for enabled in ["0", "'0'", '"0"']:
+            with self.subTest(enabled=enabled):
+                with open(self.cfg,"w") as fh:fh.write("ENABLED="+enabled+"\nMODE='broken\n")
+                self._seed([["-j","balance"],["-i","br0","-j","WA_ADMIT"]],extra_chains={"WA_ADMIT":[["-j","RETURN"]]})
+                self.assertEqual(self._run("reconcile").returncode,0)
+                self.assertEqual(self._chains()["PREROUTING"],[["-j","balance"]])
+
+    def test_missing_helper_removes_abandoned_rules_before_config_validation(self):
+        self._write_config(enabled=1)
+        with open(self.cfg,'a') as fh:fh.write('MODE=Sticky\n')
+        self._seed([["-j","balance"],["-i","br0","-j","WA_ADMIT"]],extra_chains={"WA_ADMIT":[["-j","RETURN"]]})
+        r=self._run('reconcile')
+        self.assertNotEqual(r.returncode,0)
+        self.assertIn('invalid MODE',r.stderr)
+        self.assertEqual(self._chains()['PREROUTING'],[["-j","balance"]])
+
+    def test_disable_from_management_scope(self):
+        self._write_config(enabled=1)
+        self._seed([["-j","balance"],["-i","br0","-j","WA_ADMIT"]],extra_chains={"WA_ADMIT":[["-j","RETURN"]]})
+        r=self._run("disable",extra_env={"SSH_CONNECTION":"192.168.1.100 1234 192.168.1.1 22"})
+        self.assertEqual(r.returncode,0,r.stderr)
+        self.assertEqual(self._chains()["PREROUTING"],[["-j","balance"]])
+
     def test_uninstall_removes_only_its_own_directories(self):
         self._seed([])
         os.makedirs(self.run_dir, exist_ok=True)
@@ -300,6 +337,19 @@ open(proc+'/net/netfilter/nfnetlink_queue','w').close()
         self.assertEqual(r.returncode,0,r.stderr)
         for name,body in existing.items():
             with open(os.path.join(scripts,name)) as fh:self.assertEqual(fh.read(),body)
+
+    def test_hooks_preserve_bash_shebang_options_and_syntax(self):
+        scripts=os.path.join(self.tmp,"scripts");os.mkdir(scripts)
+        body='#!'+shutil.which('bash')+' -e\nvalues=(one two)\n[[ ${values[1]} == two ]]\n'
+        hook=os.path.join(scripts,"firewall-start")
+        with open(hook,"w") as fh:fh.write(body)
+        env=dict(os.environ,PATH=self.bin+os.pathsep+os.environ['PATH'],WA_BASE=self.base,WA_SCRIPTS=scripts)
+        for action in ['install','install','remove']:
+            r=subprocess.run(['sh',os.path.join(REPO,'hooks.sh'),action],env=env,capture_output=True,text=True)
+            self.assertEqual(r.returncode,0,r.stderr)
+            with open(hook) as fh:contents=fh.read()
+            self.assertEqual(contents.splitlines()[0],body.splitlines()[0])
+        self.assertEqual(contents,body)
 
     def test_foreign_chain_is_never_flushed(self):
         self._seed([],extra_chains={"WA_ADMIT":[["-j","RETURN"]]},owned=False)

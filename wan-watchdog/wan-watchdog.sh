@@ -7,17 +7,15 @@ OWNER=${OWNERSHIP_DIR:-/jffs/wan-watchdog}
 BIN="$BASE/wan-watchdog"
 ADAPTER="$BASE/lib/ww-adapter.sh"
 LEGACY="$BASE/wan-watchdog-legacy.sh"
+. "$BASE/lib/ww-service.sh"
+ww_policy_load
 PID="$RUN/wan-watchdog.pid"
 case "$BASE:$RUN:$OWNER" in *'..'*|*' '*|*'
 '*) echo 'unsafe component path' >&2;exit 2;; esac
 alive() {
-    [ -r "$PID" ] || return 1
-    read p <"$PID"
-    case "$p" in ''|*[!0-9]*) return 1;; esac
-    [ -r "/proc/$p/cmdline" ] || return 1
-    first=$(tr '\000' '\n' <"/proc/$p/cmdline" | head -n1)
-    [ "$first" = "$BIN" ]
+    ww_owner && [ "$kind" = monitor ]
 }
+
 case "${1:-run}" in
 run)
     [ -x "$BIN" ] && [ -r "$ADAPTER" ] && [ -r "$LEGACY" ] || exit 2
@@ -26,7 +24,7 @@ run)
 start)
     alive && exit 0
     mkdir -p "$RUN" || exit 1
-    nohup sh "$0" run </dev/null >>"$RUN/monitor.log" 2>&1 &
+    nohup sh "$0" run 7>&- 8>&- 9>&- </dev/null >>"$RUN/monitor.log" 2>&1 &
     tries=0
     while [ "$tries" -lt 10 ]; do
         if alive && grep -q 'publisher_ready=1' "$RUN/status" 2>/dev/null; then exit 0;fi

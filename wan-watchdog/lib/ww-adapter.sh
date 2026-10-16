@@ -11,6 +11,7 @@ mutations_allowed() { [ "${WW_SHADOW:-1}" = 0 ] || { echo 'shadow mutation refus
 case "$phase" in
 init)
     mutations_allowed
+    [ "$LAN_NETWORKS" = auto ] || lan_networks >/dev/null || exit 70
     routing_init || exit 70
     previous_mode=$(read_number "$OWNERSHIP_DIR/mode" '')
     if [ -n "$previous_mode" ] && [ "$previous_mode" != "$FAILOVER_MODE" ]; then

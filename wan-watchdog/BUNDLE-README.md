@@ -5,14 +5,17 @@ This archive contains static binaries; no compiler or Python is needed on the
 router. Source and licensing: https://github.com/aiordanescu/asuswrt-merlin-tools
 
 Prebuilt downloads and checksums:
-https://github.com/aiordanescu/asuswrt-merlin-tools/releases/tag/wan-tools-2026.10.15-beta.4
+https://github.com/aiordanescu/asuswrt-merlin-tools/releases/tag/wan-tools-2026.10.15-beta.5
 Verify the downloaded archive against `SHA256SUMS` on your computer before
 transferring it. Building from source remains optional; the complete guide
 below retains those instructions.
 
-This installer upgrades the running, unmodified shell reference included in
-the archive. It requires the standard paths, healthy monitoring on both WANs,
-and no active failover. It is not a fresh-install or arbitrary-upgrade tool.
+This installer supports a running, reviewed shell reference (`--install`) or
+an installed C monitor (`--upgrade`). It requires the standard paths, healthy
+monitoring on both WANs and no active failover. Establish the shell setup first
+for a new watchdog installation. Supported settings are captured from the
+running owner into `/jffs/wan-watchdog/service.conf`; starts and recovery use
+that saved configuration.
 
 Read the complete build, shadow qualification, installation and rollback guide:
 https://github.com/aiordanescu/asuswrt-merlin-tools/blob/main/wan-watchdog/GUIDE.md
@@ -25,13 +28,18 @@ sh install.sh --install
 /jffs/wan-watchdog/service/wan-healthctl
 ```
 
-The installer retains the routing ownership ledger, preserves existing hooks,
+Use `sh install.sh --upgrade` for an installed monitor. The installer retains
+the routing ownership ledger, preserves existing hooks,
 and arms an independent rollback guard. Keep one routing owner. Restore the
-saved shell implementation with:
+previous service and saved configuration with:
 
 ```sh
 sh /jffs/wan-watchdog/service/rollback.sh --rollback
 ```
+
+Rollback verifies the replacement process, service lock and monitoring output.
+Its mutex is automatically released on process exit. A stale PID file is not
+accepted as evidence of successful recovery.
 
 Normal stop preserves forwarding state; explicit cleanup is separate.
 No subscriber is required. This bundle includes no affinity component.

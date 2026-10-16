@@ -239,7 +239,7 @@ prepare_probe_routes() {
 }
 network_cidr() {
   awk -v value="$1" 'BEGIN {
-    split(value,p,"/"); n=split(p[1],a,"."); bits=p[2];
+    if(split(value,p,"/")!=2) exit 1; n=split(p[1],a,"."); bits=p[2];
     if(n!=4 || bits !~ /^[0-9]+$/ || bits<0 || bits>32) exit 1;
     ip=0; for(i=1;i<=4;i++) {if(a[i] !~ /^[0-9]+$/ || a[i]>255) exit 1; ip=ip*256+a[i]}
     block=2^(32-bits); ip=int(ip/block)*block;
@@ -248,12 +248,23 @@ network_cidr() {
   }'
 }
 lan_networks() {
+  # Validate in this shell, before sorting: a pipeline's last status would
+  # otherwise hide an invalid entry and silently discard all later networks.
   if [ "$LAN_NETWORKS" = auto ]; then
     lan_iface=$(nvram get lan_ifname)
-    ip -o -4 addr show | awk -v lan="$lan_iface" '$2==lan || $2 ~ /^br[0-9]+$/ {print $4}'
+    lan_addresses=$(ip -o -4 addr show) || return 1
+    lan_values=$(printf '%s\n' "$lan_addresses" | awk -v lan="$lan_iface" '$2==lan || $2 ~ /^br[0-9]+$/ {print $4}') || return 1
   else
-    printf '%s\n' $LAN_NETWORKS
-  fi | while IFS= read -r lan_cidr; do network_cidr "$lan_cidr" || exit 1; done | sort -u
+    lan_values=$LAN_NETWORKS
+  fi
+  lan_validated=
+  for lan_cidr in $lan_values; do
+    lan_network=$(network_cidr "$lan_cidr") || { log "invalid LAN_NETWORKS entry: $lan_cidr"; return 1; }
+    lan_validated="$lan_validated$lan_network
+"
+  done
+  [ -n "$lan_validated" ] || return 1
+  printf '%s' "$lan_validated" | sort -u
 }
 dns_servers() {
   if [ "$DNS_SERVERS" = auto ]; then
@@ -420,6 +431,7 @@ probe_target() {
   fi
 }
 prepare_probes() {
+  probe_pids=
   for probe_unit in 0 1; do
     probe_enabled=$(nvram get wan${probe_unit}_enable)
     probe_iface=$(nvram get wan${probe_unit}_ifname)
@@ -449,10 +461,12 @@ prepare_probes() {
       echo -1 > "$STATE_DIR/probe_${probe_unit}_a"
       echo -1 > "$STATE_DIR/probe_${probe_unit}_b"
       probe_target "$probe_ip" "$probe_iface" "$TARGET_A" "$STATE_DIR/probe_${probe_unit}_a" &
+      probe_pids="$probe_pids $!"
       probe_target "$probe_ip" "$probe_iface" "$TARGET_B" "$STATE_DIR/probe_${probe_unit}_b" &
+      probe_pids="$probe_pids $!"
     fi
   done
-  wait
+  for probe_pid in $probe_pids; do wait "$probe_pid" || :; done
 }
 record_sample() {
   sample_file=$1
@@ -603,6 +617,7 @@ watchdog_main() {
     [ "$configured_table" -ge 1000 ] || return 1
   done
   [ "$FAILOVER_TABLE" != "$PROBE_TABLE0" ] && [ "$FAILOVER_TABLE" != "$PROBE_TABLE1" ] && [ "$PROBE_TABLE0" != "$PROBE_TABLE1" ] || return 1
+  [ "$LAN_NETWORKS" = auto ] || lan_networks >/dev/null || return 1
   if [ "${1:-}" = --cleanup ]; then cleanup_owned; return $?; fi
   routing_init || {
     [ ! -f "$OWNED_RULES" ] || remove_rule_set all

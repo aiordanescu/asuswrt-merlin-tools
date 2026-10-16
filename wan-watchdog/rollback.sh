@@ -1,36 +1,59 @@
 #!/bin/sh
-# Preserve the shared routing ledger and active markers across the handoff.
+# Restore a verified previous owner and policy; preserve the routing ledger.
 set -eu
-BASE=/jffs/wan-watchdog/service
-RUN=/tmp/wan-watchdog
-ENTRY=/jffs/scripts/wan-watchdog
-[ "${1:-}" = --rollback ] || { echo 'usage: rollback.sh --rollback' >&2;exit 2; }
-[ -r "$BASE/rollback/wan-watchdog" ] || exit 1
-mkdir "$RUN/rollback-running" 2>/dev/null || exit 1
-trap 'rmdir "$RUN/rollback-running"' EXIT
-if [ -r "$RUN/wan-watchdog.pid" ];then
-    read p <"$RUN/wan-watchdog.pid"
-    case "$p" in ''|*[!0-9]*) exit 1;; esac
-    if [ -r "/proc/$p/cmdline" ];then
-        first=$(tr '\000' '\n' <"/proc/$p/cmdline" | head -n1)
-        if [ "$first" = "$BASE/wan-watchdog" ];then
-            kill -TERM "$p"
-            tries=0
-            while kill -0 "$p" 2>/dev/null && [ "$tries" -lt 10 ];do sleep 1;tries=$((tries+1));done
-            kill -0 "$p" 2>/dev/null && exit 1
-        else
-            cmd=$(tr '\000' ' ' <"/proc/$p/cmdline")
-            case "$cmd" in *"$ENTRY"*)
-                cmp -s "$ENTRY" "$BASE/rollback/wan-watchdog" && { rm -f "$BASE/rollback/armed";exit 0; };;
-            esac
-            echo 'unrecognized owner; preserving it' >&2;exit 1
-        fi
-    fi
+BASE=${WW_BASE:-/jffs/wan-watchdog/service}
+. "$BASE/lib/ww-service.sh"
+case "${1:-}" in
+--rollback) read token <"$BASE/rollback/latest";;
+--guard) token=${2:-};;
+*) ww_die 'usage: rollback.sh --rollback';;
+esac
+case "$token" in ''|*[!0-9-]*) ww_die 'invalid rollback transaction';; esac
+transaction="$BASE/rollback/$token"
+[ -r "$transaction/entry" ] && [ -r "$transaction/kind" ] || ww_die 'rollback snapshot missing'
+mkdir -p "$RUN"
+exec 8>"$RUN/rollback.lock"
+flock -n 8 || ww_die 'another rollback is running'
+if [ "${1:-}" = --guard ]; then
+    mv "$transaction/armed" "$transaction/guard-claimed" 2>/dev/null || exit 0
+else
+    [ ! -f "$transaction/armed" ] || mv "$transaction/armed" "$transaction/manual-claimed"
 fi
-cp "$BASE/rollback/wan-watchdog" "$ENTRY.new"
+exec 9>"$RUN/handoff.lock"
+flock -x 9
+ww_stop_owner || ww_die 'previous owner or inherited lock did not stop'
+read previous_kind <"$transaction/kind"
+case "$previous_kind" in
+monitor)
+    for file in wan-watchdog wan-healthctl wan-watchdog-legacy.sh lib/ww-adapter.sh; do
+        cp "$transaction/$file" "$BASE/$file.new";chmod 700 "$BASE/$file.new";mv "$BASE/$file.new" "$BASE/$file"
+    done
+    # Keep the hardened wrapper and recovery tools with the previous executable.
+    cp "$BASE/wan-watchdog.sh" "$ENTRY.new"
+    ;;
+shell) cp "$transaction/entry" "$ENTRY.new";;
+*) ww_die 'invalid previous owner kind';;
+esac
 chmod 700 "$ENTRY.new";mv "$ENTRY.new" "$ENTRY"
-nohup "$ENTRY" </dev/null >>/tmp/wan-watchdog.log 2>&1 &
-sleep 2
-[ -r "$RUN/wan-watchdog.pid" ] || exit 1
-rm -f "$BASE/rollback/armed"
-echo 'Legacy watchdog restored; monitor bundle retained for inspection.'
+cp "$transaction/service.conf" "$CONFIG.new";chmod 600 "$CONFIG.new";mv "$CONFIG.new" "$CONFIG"
+ww_policy_load
+rm -f "$RUN/status" "$RUN/status.new"
+if [ "$previous_kind" = monitor ]; then
+    sh "$ENTRY" start 8>&- || ww_die 'previous monitor did not restart'
+else
+    nohup "$ENTRY" 8>&- 9>&- </dev/null >>"$RUN/rollback-owner.log" 2>&1 &
+fi
+restore_end=$(($(ww_now)+45))
+while [ "$(ww_now)" -lt "$restore_end" ]; do
+    if [ "$previous_kind" = shell ]; then
+        if ww_shell_ready; then touch "$transaction/restored";echo 'Previous shell watchdog restored and monitoring.';exit 0;fi
+    elif ww_owner && [ "$kind" = monitor ] && ! flock -n "$RUN/lock" true &&
+         "$BASE/wan-healthctl" --timeout 2 >"$RUN/rollback-health.json" 2>/dev/null &&
+         grep -q '"fresh":true' "$RUN/rollback-health.json" &&
+         grep -q '"routing_error":0' "$RUN/rollback-health.json" &&
+         [ "$(grep -o '"eligible":1' "$RUN/rollback-health.json" | wc -l)" -eq 2 ]; then
+        touch "$transaction/restored";echo 'Previous monitor watchdog restored and qualified.';exit 0
+    fi
+    sleep 1
+done
+ww_die 'replacement monitoring not confirmed; recovery snapshot retained'

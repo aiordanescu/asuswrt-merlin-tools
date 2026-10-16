@@ -182,7 +182,7 @@ else exec {real_iptables} "$@";fi
         deadline = time.monotonic() + 240
         while time.monotonic() < deadline:
             text = status()
-            if f'src={client} wan=0 ' in text and 'transitional=' not in text:
+            if f'src={client} wan=0 ' in text and 'awaiting_new=' not in text:
                 break
             time.sleep(3)
         else:

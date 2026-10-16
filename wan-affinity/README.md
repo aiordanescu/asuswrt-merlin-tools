@@ -66,8 +66,12 @@ The watchdog integration uses the local health socket at
 `/tmp/wan-watchdog/health.sock`. A stale or disconnected watchdog cannot prove
 that an excluded WAN has recovered. Existing associations retain their WAN
 when health is UNKNOWN; same-boot RAM checkpoints preserve exclusions across
-helper restarts. When affinity declines admission, firmware load balancing
-remains the fallback.
+helper restarts. When the running helper declines admission, it returns the
+packet to firmware load balancing. Kernel queue bypass has a different path,
+described under [operations and rollback](#operations-and-rollback).
+
+The [0.4.3 maintenance notes](../MAINTENANCE-2026-10-15.md) cover lifecycle
+repairs and the kernel fallback verification.
 
 ## Routing boundaries
 
@@ -102,7 +106,7 @@ flushed on failover, recovery, stop, upgrade, or uninstall.
 No Entware dependency or router firmware rebuild is required for the tested
 static aarch64 binary. Download **`wan-affinity-aarch64.tar.gz`** and
 **`SHA256SUMS`** from the
-[prebuilt beta release](https://github.com/aiordanescu/asuswrt-merlin-tools/releases/tag/wan-tools-2026.10.15-beta.4)
+[prebuilt beta release](https://github.com/aiordanescu/asuswrt-merlin-tools/releases/tag/wan-tools-2026.10.15-beta.5)
 to your computer. This build targets **aarch64 Linux** and was tested on the
 RT-AX88U / Merlin 3004.388.12_2. Compare the archive's checksum with its entry
 in `SHA256SUMS` (on macOS):
@@ -112,7 +116,7 @@ shasum -a 256 wan-affinity-aarch64.tar.gz
 ```
 
 On Linux use `sha256sum`. See
-[release and verification details](https://github.com/aiordanescu/asuswrt-merlin-tools/blob/wan-tools-2026.10.15-beta.4/RELEASES.md).
+[release and verification details](https://github.com/aiordanescu/asuswrt-merlin-tools/blob/wan-tools-2026.10.15-beta.5/RELEASES.md).
 Using an SSH alias named `router`, transfer the verified archive:
 
 ```sh
@@ -219,10 +223,15 @@ files. Ordinary rules, firmware routing and conntrack entries remain in place.
 
 The kernel queue has bounded length, queue-full fail-open, and absent-listener
 bypass. Packets already queued when a process dies can be lost and retransmitted.
-Firmware fallback can distribute new connections across WANs, so sticky placement
-is temporarily unavailable during failures, conservative adoption or capacity
-limits. A blocked helper can hold queued packets until recovery/full-queue
-fallback; fail-open is not an immediate deadline for every packet.
+When the running helper passes a packet back, firmware balancing can distribute
+it across WANs. If no helper is listening, or the kernel queue is full, kernel
+bypass accepts the packet without executing later rules in mangle PREROUTING,
+including the firmware balance chain. Remaining routing policy then selects
+the path; weighted balancing and sticky placement are not guaranteed. The
+supervisor removes abandoned admission rules before attempting a restart.
+`stop` and `disable` remove the admission jump to restore normal firmware
+traversal. A blocked helper can hold queued packets until recovery/full-queue
+bypass; fail-open is not an immediate deadline for every packet.
 
 Upgrade an extracted bundle with `sh install.sh --upgrade`. It preserves the
 configuration and keeps one previous binary/controller/config set. If startup

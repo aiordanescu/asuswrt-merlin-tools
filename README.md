@@ -16,7 +16,7 @@ installer adds only its own marked blocks.
 
 ## Prebuilt downloads
 
-[Download the WAN tools beta](https://github.com/aiordanescu/asuswrt-merlin-tools/releases/tag/wan-tools-2026.10.15-beta.4)
+[Download the WAN tools beta](https://github.com/aiordanescu/asuswrt-merlin-tools/releases/tag/wan-tools-2026.10.15-beta.5)
 to install without a compiler or Entware. The release provides separate
 `wan-affinity-aarch64.tar.gz` and `wan-watchdog-aarch64.tar.gz` bundles,
 SHA-256 checksums and build information. Target: **aarch64 Linux**, tested on
@@ -27,7 +27,8 @@ See [download and verification details](RELEASES.md), then follow the chosen
 component's installation guide. Source build instructions remain available in
 each component. These downloads use the same installation and qualification
 requirements as locally built bundles; affinity installs disabled, and the
-watchdog installer upgrades an existing matching shell installation.
+watchdog installer hands off from a reviewed shell installation or upgrades an
+installed monitor, preserving its saved service configuration.
 
 ## Behavior and qualification
 
@@ -57,7 +58,7 @@ the first consumer: it
 selects WANs for new connections while the watchdog retains routing failover
 and recovery authority. See its [qualification and limitations](wan-affinity/docs/QUALIFICATION-2026-10-15.md).
 
-Run the watchdog's original 65 simulated state tests without accessing a router:
+Run the watchdog's simulated state and lifecycle tests without accessing a router:
 
 ```sh
 python3 -m unittest discover -s wan-watchdog/tests

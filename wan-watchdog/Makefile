@@ -15,9 +15,11 @@ bundle: build/wan-watchdog build/wan-healthctl
 	cp wan-watchdog-legacy.sh build/bundle/wan-watchdog-legacy.sh
 	cp rollback.sh build/bundle/rollback.sh
 	cp lib/ww-adapter.sh build/bundle/lib/
+	cp lib/ww-service.sh build/bundle/lib/
 	cp ../LICENSE build/bundle/LICENSE
 	cp LICENSES/*.txt build/bundle/LICENSES/
 	cp BUNDLE-README.md build/bundle/README.md
+	cp ../MAINTENANCE-2026-10-15.md build/bundle/MAINTENANCE-2026-10-15.md
 	chmod 700 build/bundle build/bundle/wan-watchdog build/bundle/wan-healthctl build/bundle/*.sh build/bundle/lib/*.sh
 	COPYFILE_DISABLE=1 tar --format=ustar -czf build/wan-watchdog-aarch64.tar.gz -C build/bundle .
 build/wan-watchdog: $(MONITOR) $(HEADERS) | build

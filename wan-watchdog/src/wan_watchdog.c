@@ -23,6 +23,11 @@
 #include <time.h>
 #include <unistd.h>
 
+#define WORKER_SECONDS 5.0
+/* Two serialized, valid workers can span ten seconds. Allow the final probe
+ * deadline too; age remains measured conservatively from collection start. */
+#define FACT_MAX_AGE (11 * WH_NSEC)
+
 typedef struct {
     int enable, active, route[2];
     uint32_t ip, gateway, target[2];
@@ -246,7 +251,8 @@ static int route_events(void) {
     return fd;
 }
 static void status_file(const char *runtime, const wh_state *s, const wh_server *server, int shadow,
-                        unsigned ok, unsigned failed, uint64_t jitter) {
+                        unsigned ok, unsigned failed, uint64_t jitter, uint64_t facts_at,
+                        unsigned stale_cycles) {
     char path[256], temp[256];
     snprintf(path, sizeof path, "%s/status", runtime);
     snprintf(temp, sizeof temp, "%s/status.new", runtime);
@@ -260,12 +266,14 @@ static void status_file(const char *runtime, const wh_state *s, const wh_server 
         f,
         "monitor=1 shadow=%d uptime_seconds=%llu mode=%s seq=%llu progress=%llu publisher_ready=%d "
         "subscribers=%u refresh_ok=%u refresh_failed=%u max_dispatch_delay_us=%llu "
-        "routing_error=%u desired=%d applied=%d desired_generation=%llu applied_generation=%llu\n",
+        "routing_error=%u desired=%d applied=%d desired_generation=%llu applied_generation=%llu "
+        "fact_age_ms=%llu stale_fact_cycles=%u\n",
         shadow, (unsigned long long)(wh_now() / WH_NSEC), s->pinned ? "pinned" : "whole_lan",
         (unsigned long long)s->seq, (unsigned long long)s->progress, server->listener >= 0, peers,
         ok, failed, (unsigned long long)(jitter / 1000), s->routing_error, s->desired_failed,
         s->applied_failed, (unsigned long long)s->desired_generation,
-        (unsigned long long)s->applied_generation);
+        (unsigned long long)s->applied_generation,
+        (unsigned long long)(facts_at ? (wh_now() - facts_at) / 1000000 : 0), stale_cycles);
     for (int u = 0; u < 2; u++) {
         const wh_wan *w = &s->wan[u];
         fprintf(f,
@@ -464,6 +472,8 @@ int main(int argc, char **argv) {
     snprintf(ctx.runtime, sizeof ctx.runtime, "%s", runtime);
     ctx.pinned = pinned;
     unsigned refresh_ok = 0, refresh_failed = 0;
+    unsigned routing_failure = 0, routing_unconfirmed = 0, stale_fact_cycles = 0;
+    int was_stale = 0;
     int cache_mask = -1, failed_intent = -1;
     int last_pin[2] = {-1, -1}, last_active[2] = {-1, -1};
     uint64_t cycle_config[2] = {0};
@@ -498,18 +508,19 @@ int main(int argc, char **argv) {
             next_listener_retry = now + 5 * WH_NSEC;
         }
         if (job.pid) {
-            int rc = ww_worker_poll(&job, &observation, (double)now / 1e9, 5.0);
+            int rc = ww_worker_poll(&job, &observation, (double)now / 1e9, WORKER_SECONDS);
             if (rc) {
                 if (rc < 0 || observation.magic != 0x57574e31 ||
                     now - observation.started > 5 * WH_NSEC) {
                     refresh_failed++;
+                    last_facts = 0;
                     state.routing_error = 1;
                 } else {
                     unsigned previous_error = state.routing_error;
                     refresh_ok++;
                     last_facts = observation.started;
                     if (observation.operation)
-                        state.routing_error = (unsigned)observation.action_error;
+                        routing_failure = (unsigned)observation.action_error;
                     if (!initialized && active && observation.action_error) {
                         fprintf(stderr, "initial routing setup failed; preserving ledger\n");
                         break;
@@ -520,8 +531,9 @@ int main(int argc, char **argv) {
                     /* The persistent ledger records intent before mutation;
                      * it is not proof that a requested overlay was applied. */
                     if (observation.operation == 1 && observation.failed >= 0)
-                        state.routing_error = 1;
+                        routing_unconfirmed = 1;
                     if (observation.acted && !observation.action_error) {
+                        routing_unconfirmed = 0;
                         int changed =
                             observation.generation != state.applied_generation ||
                             (!pinned && state.applied_failed !=
@@ -536,9 +548,6 @@ int main(int argc, char **argv) {
                                         (unsigned long long)state.applied_generation,
                                         state.applied_failed, pinned ? "pinned" : "whole_lan");
                     }
-                    if (previous_error != state.routing_error)
-                        monitor_log(state.routing_error ? LOG_ERR : LOG_INFO,
-                                    "routing worker error=%u", state.routing_error);
                     for (int u = 0; u < 2; u++) {
                         fact *f = &observation.wan[u];
                         int changed = f->enable != facts[u].enable || f->ip != facts[u].ip ||
@@ -546,6 +555,13 @@ int main(int argc, char **argv) {
                                       memcmp(f->ifname, facts[u].ifname, 16) ||
                                       memcmp(f->target, facts[u].target, 8);
                         if (changed) {
+                            /* Pending intent belongs to the configuration that
+                             * produced it, never to this replacement lease. */
+                            need_apply = 0;
+                            ctx.restore = 0;
+                            memset(ctx.mask, 0, sizeof ctx.mask);
+                            if (active && state.applied_failed >= 0)
+                                routing_unconfirmed = 1;
                             monitor_log(
                                 LOG_INFO,
                                 "WAN%d configuration changed; restarting measurement window", u);
@@ -568,6 +584,10 @@ int main(int argc, char **argv) {
                         h->gateway = f->gateway;
                         memcpy(h->target, f->target, 8);
                     }
+                    state.routing_error = active ? routing_failure || routing_unconfirmed : 0;
+                    if (previous_error != state.routing_error)
+                        monitor_log(state.routing_error ? LOG_ERR : LOG_INFO,
+                                    "routing worker error=%u", state.routing_error);
                     if (first)
                         next_dispatch = now;
                 }
@@ -575,6 +595,13 @@ int main(int argc, char **argv) {
             }
         }
         if (have_cycle && now >= deadline) {
+            int stale = !last_facts || now - last_facts > FACT_MAX_AGE;
+            if (stale)
+                stale_fact_cycles++;
+            if (stale != was_stale)
+                monitor_log(stale ? LOG_WARNING : LOG_INFO, "router facts %s",
+                            stale ? "unavailable or stale; probes are UNKNOWN" : "fresh again");
+            was_stale = stale;
             wh_wan previous_health[2] = {core.wan[0].health, core.wan[1].health};
             for (int u = 0; u < 2; u++) {
                 if (cycle_config[u] != core.wan[u].health.config)
@@ -582,7 +609,7 @@ int main(int argc, char **argv) {
                 int a = probes[u][0].result, b = probes[u][1].result;
                 if (!facts[u].ip && facts[u].enable == 1)
                     a = b = 0;
-                if (!last_facts || now - last_facts > 5 * WH_NSEC)
+                if (stale)
                     a = b = -1;
                 ww_sample_cycle(&core, u, dispatch, facts[u].enable, a, b, facts[u].active,
                                 &flags[u]);
@@ -616,6 +643,8 @@ int main(int argc, char **argv) {
             ctx.wanted = wanted;
             ctx.restore = restore;
             ctx.sampled = dispatch;
+            memcpy(ctx.expected, facts, sizeof facts);
+            memcpy(ctx.flags, flags, sizeof flags);
             for (int u = 0; u < 2; u++) {
                 ctx.mask[u] = ww_pin_intent(flags, u, facts[u].active, &ctx.p[u], &ctx.a[u]);
                 if (pinned && ctx.mask[u]) {
@@ -650,7 +679,7 @@ int main(int argc, char **argv) {
                     ww_probe *p = &probes[u][t];
                     p->result = -1;
                     if (facts[u].enable != 1 || !facts[u].ip || facts[u].route[t] != 1 ||
-                        now - last_facts > 5 * WH_NSEC)
+                        !last_facts || now - last_facts > FACT_MAX_AGE)
                         continue;
                     if (p->fd < 0 && ww_probe_open(p, facts[u].ip, facts[u].ifname))
                         continue;
@@ -662,9 +691,7 @@ int main(int argc, char **argv) {
         if (!job.pid && now >= next_refresh) {
             ctx.operation = !initialized && active ? 1 : need_apply ? 2 : 0;
             ctx.generation = state.desired_generation;
-            memcpy(ctx.flags, flags, sizeof flags);
             ctx.nclose = 0;
-            memcpy(ctx.expected, facts, sizeof facts);
             ctx.close_fds[ctx.nclose++] = server.listener;
             ctx.close_fds[ctx.nclose++] = timer;
             ctx.close_fds[ctx.nclose++] = netlink;
@@ -682,7 +709,8 @@ int main(int argc, char **argv) {
             next_refresh = now + 2 * WH_NSEC;
         }
         if (now >= next_status) {
-            status_file(runtime, &state, &server, !active, refresh_ok, refresh_failed, jitter);
+            status_file(runtime, &state, &server, !active, refresh_ok, refresh_failed, jitter,
+                        last_facts, stale_fact_cycles);
             next_status = now + WH_NSEC;
         }
         struct pollfd p[WH_SERVER_FDS + 6];
@@ -737,7 +765,8 @@ int main(int argc, char **argv) {
         ww_worker_poll(&job, &observation, (double)wh_now() / 1e9, 0);
         usleep(10000);
     }
-    status_file(runtime, &state, &server, !active, refresh_ok, refresh_failed, jitter);
+    status_file(runtime, &state, &server, !active, refresh_ok, refresh_failed, jitter, last_facts,
+                stale_fact_cycles);
     wh_server_close(&server);
     close(timer);
     if (netlink >= 0)

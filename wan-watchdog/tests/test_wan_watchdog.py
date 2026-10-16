@@ -63,6 +63,42 @@ assert_eq "$(cat "$STATE_DIR/moves")" "{unit} wan{1-unit}"
 assert_eq "$(field {unit} 4)" degraded
 ''')
 
+    def test_invalid_lan_list_fails_without_emitting_partial_scope(self):
+        self.run_case('''
+for LAN_NETWORKS in '192.168.50.0/33 10.10.0.0/16' '192.168.1.0/24 192.168.50.0/33 10.10.0.0/16' '192.168.1.0/24 192.168.1.1' '192.168.1.0/24/1'; do
+  if lan_networks >"$STATE_DIR/networks"; then echo 'invalid LAN list accepted' >&2;exit 1;fi
+  assert_eq "$(cat "$STATE_DIR/networks")" ''
+done
+LAN_NETWORKS='192.168.1.100/24 10.10.1.4/16 192.168.1.0/24'
+assert_eq "$(lan_networks)" '10.10.0.0/16
+192.168.1.0/24'
+''')
+
+    def test_invalid_automatic_lan_scope_fails_closed(self):
+        self.run_case('''
+LAN_NETWORKS=auto
+nvram() { echo br0; }
+ip() { printf '%s\\n' '1: br0 inet 192.168.1.1/24' '2: br1 inet broken' '3: br2 inet 10.10.0.1/16'; }
+if lan_networks >"$STATE_DIR/networks";then exit 1;fi
+assert_eq "$(cat "$STATE_DIR/networks")" ''
+''')
+
+    def test_probe_cycle_does_not_wait_for_background_ddns(self):
+        self.run_case('''
+nvram() { case "$2" in *_enable) echo 1;; *_ifname) echo test0;; *_ipaddr) echo 192.0.2.2;; *_gateway) echo 192.0.2.1;; esac; }
+probe_target() { echo 1 >"$4"; }
+(while [ ! -f "$STATE_DIR/release-ddns" ];do sleep 1;done) &
+background=$!
+(sleep 4;kill "$background" 2>/dev/null) &
+timer=$!
+prepare_probes
+if ! kill -0 "$background" 2>/dev/null;then kill "$timer" 2>/dev/null;exit 1;fi
+touch "$STATE_DIR/release-ddns"
+kill "$background" "$timer" 2>/dev/null || :
+wait "$background" 2>/dev/null || :
+wait "$timer" 2>/dev/null || :
+''')
+
     def test_one_broken_target_does_not_trigger_failover(self):
         self.run_case('''
 make_window 0 15 0; make_window 1 0 0

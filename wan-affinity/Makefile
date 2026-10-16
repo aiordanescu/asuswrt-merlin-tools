@@ -45,6 +45,7 @@ bundle: router
 	mkdir -p $(BUILD)/bundle/docs $(BUILD)/bundle/LICENSES
 	cp $(BUILD)/wan-affinity wan-affinity.sh wan-affinity.conf.example hooks.sh install.sh rollback.sh README.md ../LICENSE $(BUILD)/bundle/
 	cp BUILDING.md $(BUILD)/bundle/
+	cp ../MAINTENANCE-2026-10-15.md $(BUILD)/bundle/docs/
 	cp docs/QUALIFICATION-2026-10-15.md docs/HEALTH-SOCKET.md docs/THROUGHPUT-2026-10-15.md docs/ADOPTION-2026-10-15.md $(BUILD)/bundle/docs/
 	cp LICENSES/*.txt $(BUILD)/bundle/LICENSES/
 	chmod 700 $(BUILD)/bundle $(BUILD)/bundle/wan-affinity $(BUILD)/bundle/*.sh
@@ -63,5 +64,5 @@ $(BUILD)/health-fixture: tests/c/health_fixture.c ../common/wan-health/wh_protoc
 .PHONY: sanitize
 sanitize:
 	@mkdir -p $(BUILD)
-	$(CC) -std=c11 -O1 -g -fno-inline -fsanitize=address,undefined -fno-omit-frame-pointer -Isrc tests/c/test_engine.c src/wa_engine.c src/wa_conntrack.c src/wa_checkpoint.c -o $(BUILD)/test_engine_sanitized
+	$(CC) -std=c11 -O1 -g -fsanitize=address,undefined -fno-omit-frame-pointer -Isrc tests/c/test_engine.c src/wa_engine.c src/wa_conntrack.c src/wa_checkpoint.c -o $(BUILD)/test_engine_sanitized
 	$(BUILD)/test_engine_sanitized

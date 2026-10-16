@@ -74,7 +74,7 @@ static void both_up(wa_engine *e) {
 }
 
 static void test_simultaneous_first_connections(void) {
-    wa_engine e;
+    static wa_engine e;
     base_engine(&e, WA_STICKY, NULL);
     both_up(&e);
     int wan = -1;
@@ -89,7 +89,7 @@ static void test_simultaneous_first_connections(void) {
 }
 
 static void test_mark_preserved(void) {
-    wa_engine e;
+    static wa_engine e;
     base_engine(&e, WA_STICKY, NULL);
     both_up(&e);
     wa_admission r = wa_admission_decision(&e, 1.0, ip("192.168.1.60"), ip("93.184.216.34"), 6,
@@ -100,7 +100,7 @@ static void test_mark_preserved(void) {
 }
 
 static void test_exclusions(void) {
-    wa_engine e;
+    static wa_engine e;
     base_engine(&e, WA_STICKY, NULL);
     both_up(&e);
     wa_domain_add_pin(&e, ip("192.168.1.70"), 0xffffffffu, 0, 0);
@@ -125,7 +125,7 @@ static void test_exclusions(void) {
 }
 
 static void test_delayed_unconfirmed_packet_is_retained(void) {
-    wa_engine e;
+    static wa_engine e;
     base_engine(&e, WA_STICKY, NULL);
     both_up(&e);
     wa_admission r = wa_admission_decision(&e, 0.0, ip("192.168.1.55"), ip("93.184.216.34"), 17,
@@ -149,7 +149,7 @@ static void test_delayed_unconfirmed_packet_is_retained(void) {
 }
 
 static void test_quiet_established_retained_and_expiry(void) {
-    wa_engine e;
+    static wa_engine e;
     base_engine(&e, WA_STICKY, NULL);
     both_up(&e);
     wa_admission r = wa_admission_decision(&e, 0.0, ip("192.168.1.56"), ip("93.184.216.34"), 6,
@@ -170,7 +170,7 @@ static void test_quiet_established_retained_and_expiry(void) {
 }
 
 static void test_invalid_dumps_never_expire(void) {
-    wa_engine e;
+    static wa_engine e;
     base_engine(&e, WA_STICKY, NULL);
     both_up(&e);
     wa_admission r = wa_admission_decision(&e, 0.0, ip("192.168.1.57"), ip("93.184.216.34"), 6,
@@ -192,7 +192,7 @@ static void test_invalid_dumps_never_expire(void) {
 }
 
 static void test_affinity_returns_to_preference(void) {
-    wa_engine e;
+    static wa_engine e;
     base_engine(&e, WA_AFFINITY, "aa:bb:cc:dd:ee:ff");
     both_up(&e);
     uint32_t src = 0;
@@ -224,7 +224,7 @@ static void test_affinity_returns_to_preference(void) {
 }
 
 static void test_sticky_does_not_return(void) {
-    wa_engine e;
+    static wa_engine e;
     base_engine(&e, WA_STICKY, NULL);
     both_up(&e);
     uint32_t src = ip("192.168.1.40");
@@ -243,7 +243,7 @@ static void test_sticky_does_not_return(void) {
 }
 
 static void test_reconstruct_single_and_mixed(void) {
-    wa_engine e;
+    static wa_engine e;
     base_engine(&e, WA_STICKY, NULL);
     both_up(&e);
     char rows[512], dump[1024], r1[160], r2[160], r3[160];
@@ -274,7 +274,7 @@ static void test_reconstruct_single_and_mixed(void) {
 }
 
 static void test_event_lifecycle(void) {
-    wa_engine e;
+    static wa_engine e;
     base_engine(&e, WA_STICKY, NULL);
     both_up(&e);
     wa_admission r = wa_admission_decision(&e, 0.0, ip("192.168.1.65"), ip("93.184.216.34"), 6,
@@ -294,7 +294,7 @@ static void test_event_lifecycle(void) {
 }
 
 static void test_destroy_alone_does_not_expire(void) {
-    wa_engine e;
+    static wa_engine e;
     base_engine(&e, WA_STICKY, NULL);
     both_up(&e);
     wa_admission r = wa_admission_decision(&e, 0.0, ip("192.168.1.67"), ip("93.184.216.34"), 6,
@@ -311,7 +311,7 @@ static void test_destroy_alone_does_not_expire(void) {
 static void test_affinity_golden_vectors(void) {
     /* Must match wan_affinity/selection.py AffinitySelector("seed-x", (2,1));
      * see tests/test_selection.py. One algorithm, one set of vectors. */
-    wa_engine e;
+    static wa_engine e;
     base_engine(&e, WA_AFFINITY, "seed-x");
     both_up(&e);
     wa_admission a = wa_admission_decision(&e, 1.0, ip("192.168.1.10"), ip("93.184.216.34"), 6,
@@ -323,7 +323,7 @@ static void test_affinity_golden_vectors(void) {
 }
 
 static void test_snapshot_expiry_and_recovery_admission(void) {
-    wa_engine e;base_engine(&e,WA_STICKY,NULL);both_up(&e);
+    static wa_engine e;base_engine(&e,WA_STICKY,NULL);both_up(&e);
     const char *s="version=1\npublisher=wan-watchdog\npublisher_boot_id=test-boot\nseq=1\npublished_mono=100\nwan0.state=eligible\nwan0.eligible=0\nwan0.recovered=0\nwan1.state=eligible\nwan1.eligible=1\nwan1.recovered=0\n";
     CHECK(wa_health_apply_snapshot(&e,s,100)==1,"complete snapshot accepted");
     CHECK(wa_health_eligibility(&e,0)==WA_UNKNOWN,"acceptable but recovery-held WAN not admitted");
@@ -337,7 +337,7 @@ static void test_snapshot_expiry_and_recovery_admission(void) {
 }
 
 static void test_transitional_source_recovers_after_complete_idle(void) {
-    wa_engine e;base_engine(&e,WA_STICKY,NULL);both_up(&e);
+    static wa_engine e;base_engine(&e,WA_STICKY,NULL);both_up(&e);
     char row[256],dump[512];
     mk_row(row,sizeof row,77,ip("192.168.1.51"),ip("1.1.1.1"),6,-1,0);
     mk_dump(dump,sizeof dump,row,1);wa_reconcile(&e,1,dump,1);wa_reconstruct(&e);
@@ -349,7 +349,7 @@ static void test_transitional_source_recovers_after_complete_idle(void) {
 }
 
 static void test_invalid_dump_never_uses_old_empty_confirmation(void) {
-    wa_engine e;base_engine(&e,WA_STICKY,NULL);both_up(&e);e.idle_seconds=10;
+    static wa_engine e;base_engine(&e,WA_STICKY,NULL);both_up(&e);e.idle_seconds=10;
     wa_admission a=wa_admission_decision(&e,1,ip("192.168.1.51"),ip("1.1.1.1"),6,1234,443,0,1);
     char row[256],dump[512];
     mk_row(row,sizeof row,1,ip("192.168.1.51"),ip("1.1.1.1"),6,a.wan,0);
@@ -384,7 +384,7 @@ static void test_full_state_table_retains_pending(void) {
 }
 
 static void test_exact_tuple_snapshot_confirmation(void) {
-    wa_engine e;base_engine(&e,WA_STICKY,NULL);both_up(&e);
+    static wa_engine e;base_engine(&e,WA_STICKY,NULL);both_up(&e);
     uint32_t src=ip("192.168.1.51"),dst=ip("93.184.216.34");
     uint64_t token=wa_flow_token(&e,6,src,dst,50000,443);
     wa_admission a=wa_admission_decision(&e,1,src,dst,6,50000,443,0,token);
@@ -430,7 +430,7 @@ static void test_netlink_unpadded_final_packet(void) {
 }
 
 static void test_complete_lifecycle_view_protects_held_and_cleans_terminal(void) {
-    wa_engine e;base_engine(&e,WA_STICKY,NULL);both_up(&e);
+    static wa_engine e;base_engine(&e,WA_STICKY,NULL);both_up(&e);
     wa_admission a=wa_admission_decision(&e,0,ip("192.168.1.51"),ip("1.1.1.1"),17,63000,443,0,1);
     CHECK(a.action==WA_ACT_MARK,"held packet admitted");
     wa_state held=e.state[0];held.provisional=0; /* observed in the kernel's U table */
@@ -446,7 +446,7 @@ static void test_complete_lifecycle_view_protects_held_and_cleans_terminal(void)
 }
 
 static void test_async_snapshot_cutoff_and_failed_view(void) {
-    wa_engine e;base_engine(&e,WA_STICKY,NULL);both_up(&e);
+    static wa_engine e;base_engine(&e,WA_STICKY,NULL);both_up(&e);
     wa_admission_decision(&e,2,ip("192.168.1.51"),ip("1.1.1.1"),6,63000,443,0,1);
     CHECK(!wa_reconcile_view(&e,1,3,NULL,0,1),"asynchronous older empty snapshot accepted");
     CHECK(e.n_state==1 && e.state[0].provisional && !wa_tick(&e,3),"admission after collection began survives an empty older view");
@@ -485,7 +485,7 @@ static void test_policy_exclusions(void) {
 }
 
 static void test_live_unpin_adoption_retains_failover_decision(void) {
-    wa_engine e;base_engine(&e,WA_STICKY,NULL);both_up(&e);
+    static wa_engine e;base_engine(&e,WA_STICKY,NULL);both_up(&e);
     uint32_t src=ip("192.168.1.51");
     wa_domain_add_pin(&e,src,0xffffffffu,0,0);
     wa_state old={.ctid=1,.src=src,.dst=0x01010101u,.sport=61000,.dport=443,.proto=6,.wan=1};

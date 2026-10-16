@@ -52,6 +52,18 @@ load_config() {
     . "$CFG"
     : "${MODE:=sticky}" "${QUEUE_NUM:=20880}" "${CLIENT:=}" "${LAN_SCOPE:=0}" "${ENABLED:=0}"
     : "${SUPERVISE:=0}"
+}
+config_disabled() {
+    # Read this one switch without executing a possibly broken config. The
+    # final literal assignment wins, as in the documented shell config.
+    [ -f "$CFG" ] || return 1
+    awk '/^[ \t]*(export[ \t]+)?ENABLED[ \t]*=/ {
+      sub(/^[ \t]*(export[ \t]+)?ENABLED[ \t]*=[ \t]*/, "")
+      sub(/[ \t]+#.*/, ""); sub(/[ \t]+$/, "")
+      disabled=($0=="0" || $0=="\"0\"" || $0=="\0470\047")
+    } END {exit !disabled}' "$CFG"
+}
+validate_config() {
     case "$MODE" in sticky|affinity) ;; *) fail 'invalid MODE' ;; esac
     case "$QUEUE_NUM" in ''|*[!0-9]*) fail 'invalid queue number' ;; esac
     [ "$QUEUE_NUM" -le 65535 ] || fail 'queue number out of range'
@@ -80,6 +92,7 @@ control_lock() {
     LOCKED=1
 }
 cfg_set() {
+    [ -f "$CFG" ] || { printf '%s=%s\n' "$1" "$2" >"$CFG"; return $?; }
     awk -v k="$1" -v v="$2" 'BEGIN{done=0} $0~"^"k"=" {print k"="v;done=1;next} {print} END{if(!done)print k"="v}' "$CFG" >"$CFG.new" && mv "$CFG.new" "$CFG"
 }
 chain_exists() { ipt -n -L "$CHAIN" >/dev/null 2>&1; }
@@ -222,14 +235,22 @@ rollback_start() { remove_rules || true; [ "$NEW_HELPER" != 1 ] || stop_helper |
 on_exit() { _rc=$?; [ "$STARTING" != 1 ] || rollback_start; exit "$_rc"; }
 trap on_exit 0
 cmd_start() {
-    control_lock; load_config
+    control_lock
+    if [ "${1:-start}" = reconcile ]; then
+        # Restore ordinary firmware traversal before attempting to restart a
+        # missing helper, even if activation settings have since become invalid.
+        if ! helper_alive; then remove_rules || fail 'could not remove abandoned admission rules'; fi
+        if config_disabled; then cmd_stop; return 0; fi
+        [ ! -f "$RUN/stopped" ] || return 0
+    fi
+    load_config
     if [ "${1:-start}" = reconcile ]; then
         if [ "$ENABLED" != 1 ]; then cmd_stop; return 0; fi
-        [ ! -f "$RUN/stopped" ] || return 0
     else
         rm -f "$RUN/stopped"
     fi
     [ "$ENABLED" = 1 ] || fail 'disabled in config; refusing activation'
+    validate_config
     # Boot hooks may run before the firmware firewall or queue interface exists.
     # Keep a retry owner even if this first attempt cannot become ready yet.
     start_monitor
@@ -299,7 +320,7 @@ case "${1:-}" in
  status) cmd_status ;;
  stop) cmd_stop ;;
  cleanup) cmd_stop; rm -f "$RUN/status" "$RUN/status.new" "$LOG" ;;
- disable) control_lock; load_config; cfg_set ENABLED 0; cmd_stop ;;
+ disable) control_lock; cmd_stop; cfg_set ENABLED 0 || fail 'stopped, but could not persist ENABLED=0' ;;
  uninstall) cmd_stop; [ ! -f "$BASE/hooks.sh" ] || sh "$BASE/hooks.sh" remove; rm -rf "$BASE" "$RUN" ;;
  *) echo "usage: $0 {start|reconcile|restart|status|stop|disable|cleanup|uninstall}" >&2; exit 2 ;;
 esac
