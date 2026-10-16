@@ -59,3 +59,9 @@ $(BUILD)/test_health_socket: tests/c/test_health_socket.c src/wa_engine.c src/wa
 $(BUILD)/health-fixture: tests/c/health_fixture.c ../common/wan-health/wh_protocol.c ../common/wan-health/wh_socket.c ../common/wan-health/wh_protocol.h ../common/wan-health/wh_socket.h
 	@mkdir -p $(BUILD)
 	$(ROUTER_CC) $(CFLAGS) $(ROUTER_LDFLAGS) -Isrc $(HEALTH_INC) $(filter %.c,$^) -o $@
+
+.PHONY: sanitize
+sanitize:
+	@mkdir -p $(BUILD)
+	$(CC) -std=c11 -O1 -g -fno-inline -fsanitize=address,undefined -fno-omit-frame-pointer -Isrc tests/c/test_engine.c src/wa_engine.c src/wa_conntrack.c src/wa_checkpoint.c -o $(BUILD)/test_engine_sanitized
+	$(BUILD)/test_engine_sanitized

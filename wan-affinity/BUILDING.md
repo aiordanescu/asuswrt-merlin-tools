@@ -61,3 +61,13 @@ for the scope of live validation. Actual router reboot, firmware upgrade and
 maximum sustained throughput remain untested on the sole live router.
 The [one-client primary download comparison](docs/THROUGHPUT-2026-10-15.md)
 covers the observed forwarding rate and per-flow hardware acceleration.
+
+For the engine and checkpoint sanitizer checks on macOS/Linux:
+
+```sh
+make sanitize
+```
+
+The target disables inlining for the test executable so AddressSanitizer does
+not combine the large stack-local test engines into one oversized stack frame.
+The production daemon uses a static engine.

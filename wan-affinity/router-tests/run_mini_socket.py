@@ -168,7 +168,7 @@ done
         end=time.monotonic()+240
         while time.monotonic()<end:
             text=status()
-            if f'src={client} wan=0 ' in text and 'transitional=' not in text and 'enhanced=yes' in text:return
+            if f'src={client} wan=0 ' in text and 'awaiting_new=' not in text and 'enhanced=yes' in text:return
             safe();print('Waiting for safe adoption; pin retained:',text.splitlines()[:2],flush=True);time.sleep(5)
         raise AssertionError(('source adoption remained uncertain',text))
     def probe(label,expected):

@@ -387,7 +387,7 @@ static void state_put(wa_engine *e, uint64_t ctid, uint32_t src, uint32_t dst, u
         if (e->state[i].ctid == ctid) {
             wa_state *s = &e->state[i];
             if(s->src!=src || s->dst!=dst || s->sport!=sport || s->dport!=dport || s->proto!=proto)
-                { e->tuple_index_valid=0; s->binding_id=0; s->kernel_id=0; }
+                 { e->tuple_index_valid=0; s->binding_id=0; s->kernel_id=0; }
             s->src = src;
             s->dst = dst;
             s->sport = sport;
