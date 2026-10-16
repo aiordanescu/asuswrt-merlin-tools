@@ -24,7 +24,8 @@ signal.signal(signal.SIGTERM,stop)
 n=0
 while running:
  n+=1
- text=('monitor=1 publisher_ready=1 routing_error=0 desired=-1 applied=-1 progress='+str(n)+'\n') if kind=='monitor' else ('mode='+os.environ.get('FAILOVER_MODE','whole_lan')+' whole_failed=none\nWAN0 usable \nWAN1 usable \n')
+ # The shell's status mirrors wan-watchdog-legacy.sh write_status.
+ text=('monitor=1 publisher_ready=1 routing_error=0 desired=-1 applied=-1 progress='+str(n)+'\n') if kind=='monitor' else ('uptime_seconds='+str(n)+' mode='+os.environ.get('FAILOVER_MODE','whole_lan')+' targets=198.18.0.1,198.18.0.2\nrule_priority='+os.environ.get('FAILOVER_PRIORITY','88')+' ownership=owner whole_failed=none\nWAN0 usable loss=0%/0% samples=15/15 failed_over=no recovery_since=none\nWAN1 usable loss=0%/0% samples=15/15 failed_over=no recovery_since=none\n')
  (r/'status.new').write_text(text);(r/'status.new').replace(r/'status')
  time.sleep(.02)
 if (r/'inherit-lock').exists():
@@ -112,6 +113,39 @@ print(hashlib.md5(open(sys.argv[1],'rb').read()).hexdigest()+'  '+sys.argv[1])
         self.start_old(kind='shell',FAILOVER_MODE='pinned',FAILOVER_PRIORITY='78');(self.run/'inherit-lock').touch()
         r=self.install('--install');self.assertEqual(r.returncode,0,r.stdout+r.stderr)
         self.assertEqual((self.run/'started-policy').read_text(),'pinned 78')
+
+    def test_first_install_rollback_confirms_restored_shell(self):
+        self.start_old(kind='shell',FAILOVER_MODE='pinned',FAILOVER_PRIORITY='78')
+        r=self.install('--install');self.assertEqual(r.returncode,0,r.stdout+r.stderr)
+        r=self.rollback();self.assertEqual(r.returncode,0,r.stdout+r.stderr)
+        self.assertIn('Previous shell watchdog restored and monitoring.',r.stdout)
+        token=(self.base/'rollback/latest').read_text().strip()
+        self.assertTrue((self.base/'rollback'/token/'restored').exists())
+        self.assertEqual((self.run/'started-policy').read_text(),'pinned 78')
+
+    def test_shell_readiness_matches_real_status_format(self):
+        rendered=subprocess.run(['sh','-c','. "$1"; NOW=1234; TARGET_A=198.18.0.1; TARGET_B=198.18.0.2; FAILOVER_MODE=pinned; write_status','sh',str(ROOT/'wan-watchdog-legacy.sh')],
+            env=dict(self.env,WAN_WATCHDOG_LIBRARY_ONLY='1'),capture_output=True,text=True)
+        self.assertEqual(rendered.returncode,0,rendered.stderr)
+        monitor=self.root/'monitor-status'
+        monitor.write_text('monitor=1 shadow=0 uptime_seconds=1234 mode=pinned seq=1\nWAN0 eligible=1\nWAN1 eligible=1\n')
+        check='. "$1"; ww_shell_status_ok "$2"'
+        for status,ready in [(self.run/'status',0),(monitor,1)]:
+            p=subprocess.run(['sh','-c',check,'sh',str(ROOT/'lib/ww-service.sh'),str(status)],env=self.env,capture_output=True,text=True)
+            self.assertEqual(p.returncode,ready,status.read_text())
+
+    def test_first_install_captures_running_shell_over_stale_config(self):
+        (self.owner/'service.conf').write_text('FAILOVER_MODE=whole_lan\nFAILOVER_PRIORITY=99\n')
+        self.start_old(kind='shell',FAILOVER_MODE='pinned',FAILOVER_PRIORITY='78')
+        r=self.install('--install');self.assertEqual(r.returncode,0,r.stdout+r.stderr)
+        self.assertEqual((self.run/'started-policy').read_text(),'pinned 78')
+        self.assertNotIn('FAILOVER_PRIORITY=99',(self.owner/'service.conf').read_text())
+
+    def test_upgrade_keeps_saved_monitor_configuration(self):
+        (self.owner/'service.conf').write_text('FAILOVER_MODE=pinned\nFAILOVER_PRIORITY=77\n')
+        self.start_old()
+        r=self.install();self.assertEqual(r.returncode,0,r.stdout+r.stderr)
+        self.assertEqual((self.run/'started-policy').read_text(),'pinned 77')
 
     def test_stale_pid_cannot_make_failed_replacement_look_successful(self):
         self.start_old();self.assertEqual(self.install().returncode,0)

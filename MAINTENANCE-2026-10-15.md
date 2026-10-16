@@ -121,8 +121,8 @@ remains limited to the listed router and firmware.
 | 4. Emergency disable validation | Stop independently; recognize disabled config before sourcing |
 | 5. Queue fallback claim | Correct docs, remove abandoned jump, verify kernel traversal |
 | 6. DDNS joins probe wait | Wait only for recorded probe PIDs |
-| 7. Handoff loses settings | Capture allowlisted running settings; persistent private config |
-| 8. Stale PID accepted by rollback | Verify replacement process, ownership and output |
+| 7. Handoff loses settings | Capture allowlisted running settings; persistent private config. Completed after beta.5 (see follow-up) |
+| 8. Stale PID accepted by rollback | Verify replacement process, ownership and output. Completed after beta.5 (see follow-up) |
 | 9. Inherited lock race | Bounded wait for shared lock before handoff |
 | 10. Installer/guard race | One shorter deadline and atomic transaction claim |
 | 11. Invalid LAN list truncated | Validate complete scope before emitting it |
@@ -132,3 +132,30 @@ remains limited to the listed router and firmware.
 | 15. Slow-worker freshness | Conservative age with a cadence-aware bound and counters |
 | 16. Shadow error latches | Clear on a valid recovered inspection |
 | 17. Unacknowledged restart overlay | Retain uncertainty until an acting acknowledgement |
+
+## Follow-up after beta.5: rollback confirmation and first-handoff capture
+
+A second review found that two of the fixes above were incomplete. Both are
+fixed in source after `wan-tools-2026.10.15-beta.5`; the beta.5 bundle does not
+contain these fixes.
+
+- **Shell rollback confirmation (finding 8).** `ww_shell_ready` looked for a
+  status line beginning `mode=`, but the shell's `write_status` begins
+  `uptime_seconds=N mode=...`. Every rollback to the shell restarted it
+  correctly, then reported `replacement monitoring not confirmed` after 45
+  seconds and exited 1. Readiness now matches the shell's actual first line
+  (with mode `whole_lan` or `pinned`) and both WAN lines. The monitor's own
+  status, which begins `monitor=1`, does not match.
+- **First-handoff capture (finding 7).** An existing `service.conf` was copied
+  as-is even when the previous owner was the shell, skipping the running
+  process's settings and its recorded mode. A file left by an earlier rollback
+  could therefore restore an old mode or priority. `--install` from a shell now
+  always captures from the running process. `--upgrade` from a monitor keeps
+  the installed `service.conf`, which is the monitor's actual configuration.
+
+The lifecycle fixture's fake shell now writes the real status format. New
+tests run the real `write_status` against the readiness check, roll back a
+first install to the shell, and cover both capture sources. The watchdog suite
+now passes 82 shell/DDNS/lifecycle tests; the three new rollback and capture
+tests fail against the beta.5 scripts. This follow-up was validated with host
+tests only, not on the router.

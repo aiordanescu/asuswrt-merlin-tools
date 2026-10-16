@@ -61,8 +61,10 @@ ww_stop_owner() {
 }
 ww_capture_policy() {
     # Copy only allowlisted settings, never a raw environment or credentials.
-    capture_pid=$1;capture_path=$2
-    if [ -f "$CONFIG" ]; then cp -p "$CONFIG" "$capture_path"; return; fi
+    # Only a monitor runs from service.conf. A shell runs from its own
+    # environment, so a file left by an earlier rollback must not replace it.
+    capture_pid=$1;capture_path=$2;capture_kind=$3
+    if [ "$capture_kind" = monitor ] && [ -f "$CONFIG" ]; then cp -p "$CONFIG" "$capture_path"; return; fi
     {
         printf '%s\n' 'FAILOVER_MODE=whole_lan' 'FAILOVER_PRIORITY=88' 'FAILOVER_TABLE=20188' \
           'PROBE_TABLE0=20186' 'PROBE_TABLE1=20187' 'LAN_NETWORKS=auto' 'DNS_SERVERS=auto'
@@ -80,9 +82,14 @@ ww_capture_policy() {
     fi
     sh -n "$capture_path" || ww_die 'cannot serialize service configuration'
 }
+ww_shell_status_ok() {
+    # The shell's write_status format; the monitor's status begins monitor=1.
+    grep -Eq '^uptime_seconds=[0-9]+ mode=(whole_lan|pinned) ' "$1" &&
+      grep -q '^WAN0 ' "$1" && grep -q '^WAN1 ' "$1"
+}
 ww_shell_ready() {
     ww_owner && [ "$kind" = shell ] || return 1
     ! flock -n "$RUN/lock" true || return 1
     [ -s "$RUN/status" ] || return 1
-    grep -q '^mode=' "$RUN/status"
+    ww_shell_status_ok "$RUN/status"
 }

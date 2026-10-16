@@ -37,7 +37,7 @@ transaction="$BASE/rollback/$token"
 mkdir -p "$BASE/lib" "$transaction/lib"
 printf '%s\n' "$oldkind" >"$transaction/kind"
 cp -p "$ENTRY" "$transaction/entry"
-ww_capture_policy "$oldpid" "$transaction/service.conf"
+ww_capture_policy "$oldpid" "$transaction/service.conf" "$oldkind"
 if [ "$oldkind" = monitor ]; then
     for file in wan-watchdog wan-healthctl wan-watchdog-legacy.sh lib/ww-adapter.sh; do cp -p "$BASE/$file" "$transaction/$file"; done
 fi

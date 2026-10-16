@@ -91,7 +91,9 @@ At first handoff it captures only supported settings from the running owner's
 environment, including pinned/whole-LAN mode, routing priorities and tables,
 LAN/DNS scope and DDNS helper settings. They are saved privately in
 `/jffs/wan-watchdog/service.conf`. No credentials or complete process environment
-are copied. This file becomes the configuration used for starts, upgrades and
+are copied. A `service.conf` left by an earlier rollback is replaced by the
+running shell's settings at `--install`; `--upgrade` keeps the installed file.
+This file becomes the configuration used for starts, upgrades and
 rollback. Edit it to change installed service settings; keep `services-start`
 as the existing launch hook. Its old environment overrides no longer replace
 settings saved in this file.
@@ -154,7 +156,10 @@ the previous monitor executable and adapter, retaining the hardened lifecycle
 tools. Both restore the saved configuration. Rollback rejects unrecognized live
 owners, waits for inherited locks, removes demonstrably stale PID records, and
 verifies the replacement's process, lock and monitoring output before reporting
-success. A failed restart is reported as a failure and retains its snapshot for
+success. For a restored shell, that output is its status file with the running
+mode and both WAN lines. The beta.5 bundle misreports a successful shell
+restore as a failure; see the [known issue](../RELEASES.md#known-issues-in-beta5).
+A failed restart is reported as a failure and retains its snapshot for
 retry. The recovery mutex uses `flock`, so an interrupted shell does not leave a
 permanent directory lock.
 

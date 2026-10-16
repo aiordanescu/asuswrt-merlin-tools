@@ -42,6 +42,23 @@ monitoring on both WANs and no active override. Use `--install` for handoff from
 reviewed shell reference or `--upgrade` for an installed monitor; its supported
 settings are saved in private `service.conf` and retained through recovery.
 
+## Known issues in beta.5
+
+Both are fixed in source after this release; see the
+[maintenance follow-up](MAINTENANCE-2026-10-15.md#follow-up-after-beta5-rollback-confirmation-and-first-handoff-capture).
+They affect only a watchdog first install (`--install`) that is rolled back to
+the shell. Upgrades and affinity are not affected.
+
+- **Rollback to the shell reports failure after succeeding.** `rollback.sh`
+  restarts the shell, then prints `replacement monitoring not confirmed;
+  recovery snapshot retained` after 45 seconds and exits 1. Check
+  `cat /tmp/wan-watchdog/status`: a first line `uptime_seconds=... mode=...`
+  that keeps updating, with `WAN0` and `WAN1` lines, means the shell is
+  running. Don't run rollback again; each run restarts the healthy shell.
+- **A later `--install` can reuse an old `service.conf`.** After such a
+  rollback, move `/jffs/wan-watchdog/service.conf` aside before retrying
+  `--install`, so the installer captures the running shell's settings.
+
 ## Verification for this release
 
 See the [maintenance qualification and review disposition](MAINTENANCE-2026-10-15.md)
