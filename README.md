@@ -14,9 +14,6 @@ removal, and rollback instructions. The tools can be used independently. When
 using multiple tools, preserve their existing startup hooks. Affinity's
 installer adds only its own marked blocks.
 
-WAN Affinity discussion and user test reports are in its
-[SNBForums thread](https://www.snbforums.com/threads/wan-affinity-sticky-connections-for-asuswrt-merlin-dual-wan-load-balancing.98093/).
-
 The watchdog is for **Dual WAN load-balance mode**, with **whole-LAN IPv4
 failover enabled by default**. It preserves local and recognized VPN routing
 and provides a configurable pinned-only mode. The DDNS workaround targets a
