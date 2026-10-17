@@ -28,9 +28,9 @@ class ExclusionTests(unittest.TestCase):
         self.assertEqual(self._result(src=SRC, dst="192.168.1.1").reason, "local-or-lan-dest")
 
     def test_vpn_destination_excluded(self):
-        domain = make_domain(vpn=("74.122.141.0/24",))
+        domain = make_domain(vpn=("192.0.2.0/24",))
         result = make_engine(domain=domain).admission_decision(
-            make_packet("c1", src=SRC, dst="74.122.141.5")
+            make_packet("c1", src=SRC, dst="192.0.2.5")
         )
         self.assertEqual(result.reason, "vpn-dest")
 

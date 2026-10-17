@@ -104,7 +104,7 @@ static void test_exclusions(void) {
     base_engine(&e, WA_STICKY, NULL);
     both_up(&e);
     wa_domain_add_pin(&e, ip("192.168.1.70"), 0xffffffffu, 0, 0);
-    wa_domain_add_vpn(&e, ip("74.122.141.0"), ip("255.255.255.0"));
+    wa_domain_add_vpn(&e, ip("192.0.2.0"), ip("255.255.255.0"));
     const char *want[] = {"gui-pin", "local-or-lan-dest", "vpn-dest", "non-lan-source",
                           "already-wan-marked", "proto-unsupported"};
     wa_admission r;
@@ -112,7 +112,7 @@ static void test_exclusions(void) {
     CHECK(strcmp(r.reason, want[0]) == 0, "pinned source excluded");
     r = wa_admission_decision(&e, 1.0, ip("192.168.1.71"), ip("192.168.1.1"), 6, 1, 80, 0, 2);
     CHECK(strcmp(r.reason, want[1]) == 0, "local destination excluded");
-    r = wa_admission_decision(&e, 1.0, ip("192.168.1.71"), ip("74.122.141.5"), 6, 1, 80, 0, 3);
+    r = wa_admission_decision(&e, 1.0, ip("192.168.1.71"), ip("192.0.2.5"), 6, 1, 80, 0, 3);
     CHECK(strcmp(r.reason, want[2]) == 0, "vpn destination excluded");
     r = wa_admission_decision(&e, 1.0, ip("203.0.113.9"), ip("1.1.1.1"), 6, 1, 80, 0, 4);
     CHECK(strcmp(r.reason, want[3]) == 0, "non-lan source excluded");
