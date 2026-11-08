@@ -2,8 +2,9 @@
 
 [WAN tools — 2026-10-16 beta](https://github.com/aiordanescu/asuswrt-merlin-tools/releases/tag/wan-tools-2026.10.16-beta.2)
 provides static **aarch64 Linux** bundles. No compiler, Python or Entware is
-needed on the router. Tested target: RT-AX88U, Asuswrt-Merlin 3004.388.12_2,
-Linux 4.1.51. This is not a build for 32-bit ARM, MIPS or every Merlin model.
+needed on the router. Tested target: RT-AX88U, Asuswrt-Merlin 3004.388.12_2
+(qualified) and 3004.388.13 (post-upgrade check), Linux 4.1.51. This is not a
+build for 32-bit ARM, MIPS or every Merlin model.
 
 | Download | Included production binaries | Installation |
 | --- | --- | --- |

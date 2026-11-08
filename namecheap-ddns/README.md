@@ -161,7 +161,9 @@ The firmware client's short-name resolution warning for home can still appear. T
 
 ## Scope and limitations
 
-Tested on RT-AX88U with Merlin 3004.388.12_2 and the setup above. Boot registration is installed persistently in JFFS, but reboot behavior, other models, and later firmware upgrades have not been tested.
+Tested on RT-AX88U with Merlin 3004.388.12_2 and the setup above. Boot registration is installed persistently in JFFS; the scheduled check kept running after a reboot and after upgrading the firmware to 3004.388.13. Other models have not been tested.
+
+In Dual WAN failover/failback mode the checker uses the WAN the firmware currently marks as primary, read fresh on each run. Failover mode has not been tested.
 
 The checker targets a selected WAN with a directly assigned public IPv4. It skips disconnected WANs and private/CGNAT addresses. It does not provide DDNS failover through a secondary WAN behind CGNAT, handle IPv6, apex-host @, wildcard-host *, or multiple hostnames. The example is for a normal subdomain such as home.
 

@@ -23,7 +23,14 @@ Interface**: Auto is the firmware default and enables DDNS movement with this
 integration. Read [DDNS Auto](#ddns-auto-check-the-ui-setting) for eligibility
 and provider limits.
 
-Tested on **RT-AX88U, Merlin 3004.388.12_2**. The script preserves local routes,
+**Dual WAN failover/failback mode is untested.** WAN Affinity and the DDNS
+Auto integration require load-balance mode and stay off otherwise. The
+watchdog itself does not check the Dual WAN mode and will run in failover
+mode, alongside the firmware's own line switching (wanduck), which can also
+restart a WAN when it switches lines. That combination has not been tested.
+
+Tested on **RT-AX88U, Merlin 3004.388.12_2** (qualified) and **3004.388.13**
+(post-upgrade check), in load-balance mode. The script preserves local routes,
 standard Merlin VPN policies, GUI source-IP preferences and load-balancing
 settings. Whole-LAN mode uses temporary rules instead of rewriting the GUI's
 priority-100 pins; an upgrade from the older pinned-rule version can restore
@@ -35,7 +42,7 @@ outside the recognized policies require separate validation.
 
 | Implementation | Installation and operation |
 | --- | --- |
-| C monitor + shell routing worker | [Watchdog guide](GUIDE.md): download a prebuilt aarch64 bundle (or optionally build it), qualify shadow mode, then use the guarded shell-to-C installer. Current target: RT-AX88U / Merlin 3004.388.12_2. |
+| C monitor + shell routing worker | [Watchdog guide](GUIDE.md): download a prebuilt aarch64 bundle (or optionally build it), qualify shadow mode, then use the guarded shell-to-C installer. Current target: RT-AX88U / Merlin 3004.388.12_2 and 3004.388.13. |
 | Original shell monitor | [Shell installation and upgrade](#shell-installation-and-upgrade), below. Also establishes the reference/helper/hooks before a first C-monitor installation. |
 
 The watchdog works without subscribers. Its read-only Unix socket

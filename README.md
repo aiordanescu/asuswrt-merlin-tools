@@ -1,7 +1,9 @@
 # Asuswrt-Merlin tools
 
 Router-side tools tested on an **ASUS RT-AX88U running
-Asuswrt-Merlin 3004.388.12_2**.
+Asuswrt-Merlin 3004.388.12_2** (qualified) and **3004.388.13** (post-upgrade
+check), in Dual WAN load-balance mode. Failover/failback mode is untested; see
+each tool's scope notes.
 
 | Project | What it fixes |
 | --- | --- |
@@ -20,7 +22,8 @@ installer adds only its own marked blocks.
 to install without a compiler or Entware. The release provides separate
 `wan-affinity-aarch64.tar.gz` and `wan-watchdog-aarch64.tar.gz` bundles,
 SHA-256 checksums and build information. Target: **aarch64 Linux**, tested on
-the RT-AX88U / Merlin 3004.388.12_2 above. Other architectures are not included.
+the RT-AX88U / Merlin 3004.388.12_2 and 3004.388.13 above. Other architectures
+are not included.
 The shell-only tools can be used directly from source.
 
 See [download and verification details](RELEASES.md), then follow the chosen

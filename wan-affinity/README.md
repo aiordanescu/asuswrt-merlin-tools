@@ -10,6 +10,8 @@ referring to the mapping remains active; this project implements that policy on 
 than reproducing pf. [OPNsense reference](https://docs.opnsense.org/manual/firewall_settings.html#sticky-connections).
 
 Tested hardware: **RT-AX88U, Merlin 3004.388.12_2, Linux 4.1.51, aarch64**.
+Also running unchanged on Merlin 3004.388.13 (post-upgrade check, not a new
+qualification). Failover/failback mode is refused by the installer and controller.
 Treat other firmware, router architectures, and IPv6 as unqualified. Read the
 [qualification report](docs/QUALIFICATION-2026-10-15.md) before deployment.
 
@@ -110,8 +112,8 @@ static aarch64 binary. Download **`wan-affinity-aarch64.tar.gz`** and
 **`SHA256SUMS`** from the
 [prebuilt beta release](https://github.com/aiordanescu/asuswrt-merlin-tools/releases/tag/wan-tools-2026.10.16-beta.2)
 to your computer. This build targets **aarch64 Linux** and was tested on the
-RT-AX88U / Merlin 3004.388.12_2. Compare the archive's checksum with its entry
-in `SHA256SUMS` (on macOS):
+RT-AX88U / Merlin 3004.388.12_2 and 3004.388.13. Compare the archive's
+checksum with its entry in `SHA256SUMS` (on macOS):
 
 ```sh
 shasum -a 256 wan-affinity-aarch64.tar.gz
